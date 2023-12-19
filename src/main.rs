@@ -1,3 +1,6 @@
+mod interpreter;
+use interpreter::repl;
+
 fn main() {
-    println!("Hello, world!");
+    repl();
 }
