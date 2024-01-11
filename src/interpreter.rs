@@ -6,18 +6,23 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
+fn eval(form: &str) -> &str {
+  form
+}
+
 pub fn repl() {
   println!("Malice repl started!\n");
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
-  while stdin.read_line(& mut input_buffer).is_ok() {
+  while stdin.read_line(&mut input_buffer).is_ok() {
     let trimmed_input = input_buffer.trim_end();
     if trimmed_input.eq("#EXIT") {
       println!("\nExiting Malice repl\n");
-      break
+      break;
     }
-    println!("You said \"{trimmed_input}\"");
+    let eval_result = eval(trimmed_input);
+    println!("{eval_result}");
     input_buffer.clear();
     print_prompt();
   }

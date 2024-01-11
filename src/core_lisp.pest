@@ -1,0 +1,3 @@
+atom_ending = { " " | "(" | ")" | EOI }
+digits = { ASCII_DIGIT+ }
+number = { "-"? ~ (digits ~ "." ~ digits? | digits? ~ "." ~ digits | digits) ~ atom_ending }
