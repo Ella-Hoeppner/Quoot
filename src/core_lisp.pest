@@ -1,3 +1,14 @@
 atom_ending = { " " | "(" | ")" | EOI }
+
 digits = { ASCII_DIGIT+ }
-number = { "-"? ~ (digits ~ "." ~ digits? | digits? ~ "." ~ digits | digits) ~ atom_ending }
+number = @{ 
+  "-"? ~ 
+  (digits ~ "." ~ digits? | digits? ~ "." ~ digits | digits) ~ 
+  &atom_ending 
+}
+
+character = { 
+  !("\"" | "\\") ~ ANY
+  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+}
+string = @{ "\"" ~ character* ~ "\""}
