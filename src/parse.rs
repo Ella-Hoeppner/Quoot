@@ -33,16 +33,16 @@ fn parse_numbers() {
 
 #[test]
 fn parse_strings() {
-  let valid_nums = [
+  let valid_strings = [
     "\"ur so valid!\"",
     "\"\"",
     "\"\"",
     "\"\\\"\"",
     "\"\\\"escaped\\\"\"",
   ];
-  let invalid_nums = [">:(", "5", "hello?", "\""];
+  let invalid_strings = [">:(", "5", "hello?", "\"", " \"hi!\"", "\"hello!\" "];
 
-  valid_nums.map(|str_string| {
+  valid_strings.map(|str_string| {
     let parse = CoreLispParser::parse(Rule::string, str_string);
     assert!(
       parse.is_ok(),
@@ -62,12 +62,55 @@ fn parse_strings() {
     );
   });
 
-  invalid_nums.map(|str_string| {
+  invalid_strings.map(|str_string| {
     let parse = CoreLispParser::parse(Rule::string, str_string);
     assert!(
-      parse.is_err(),
+      parse.is_err() || str_string.len() != parse.unwrap().next().unwrap().as_span().end(),
       "{} shouldn't parse as a valid string!",
       str_string
+    );
+  });
+}
+
+#[test]
+fn parse_symbols() {
+  let valid_symbols = [
+    "a",
+    "abc",
+    "123a",
+    "a123",
+    ":]",
+    ">:[",
+    "-_+-%$#^&*@!<>/\\?}{][|~`.",
+  ];
+  let invalid_symbols = ["\"", "", " ", ",", " a", "a ", ">:(", ":)"];
+
+  valid_symbols.map(|symbol_string| {
+    let parse = CoreLispParser::parse(Rule::symbol, symbol_string);
+    assert!(
+      parse.is_ok(),
+      "{} should parse as a valid string!",
+      symbol_string
+    );
+    let unwrapped_parse = parse.unwrap();
+    let span = unwrapped_parse.clone().next().unwrap().as_span();
+    assert!(
+      span.end() == symbol_string.len(),
+      "symbol {} does not get entirely consumed. String has length {} but \
+      parsing terminates at character {}.\nParse tree:\n{:?}",
+      symbol_string,
+      symbol_string.len(),
+      span.end(),
+      unwrapped_parse
+    );
+  });
+
+  invalid_symbols.map(|symbol_string| {
+    let parse = CoreLispParser::parse(Rule::symbol, symbol_string);
+    assert!(
+      parse.is_err() || symbol_string.len() != parse.unwrap().next().unwrap().as_span().end(),
+      "{} shouldn't parse as a valid symbol!",
+      symbol_string
     );
   });
 }

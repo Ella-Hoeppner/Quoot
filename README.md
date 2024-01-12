@@ -7,9 +7,7 @@ WIP clojure-ish metaprogramming-focused lisp
   * only needs a few types:
     * numbers (done!)
     * strings (done!)
-    * symbols
-      * includes what would normally be keywords like :example
-      * also includes pretty much every character but whitespace or `(` or `)`
+    * symbols (done!)
     * lists
       * delinated with `(` and `)`
       * won't have any other form types for the core lisp

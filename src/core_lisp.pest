@@ -1,4 +1,6 @@
-atom_ending = { " " | "(" | ")" | EOI }
+whitespace = _{ " " | "," | NEWLINE | "\t" }
+
+atom_ending = { whitespace | "(" | ")" | EOI }
 
 digits = { ASCII_DIGIT+ }
 number = @{ 
@@ -12,3 +14,5 @@ character = {
   | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
 }
 string = @{ "\"" ~ character* ~ "\""}
+
+symbol = { (!(whitespace | "\"" | "(" | ")") ~ ANY)+ }
