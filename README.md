@@ -8,6 +8,4 @@ WIP clojure-ish metaprogramming-focused lisp
     * numbers (done!)
     * strings (done!)
     * symbols (done!)
-    * lists
-      * delinated with `(` and `)`
-      * won't have any other form types for the core lisp
+    * lists (done I think, but untested)

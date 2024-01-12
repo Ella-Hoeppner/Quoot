@@ -7,6 +7,14 @@ use pest_derive::Parser;
 #[grammar = "core_lisp.pest"]
 pub struct CoreLispParser;
 
+pub fn test_parser() {
+  let list_string = "(+ 1 (* 2 3))";
+  let lisp_parse = CoreLispParser::parse(Rule::list, list_string);
+  println!("\n{:?}", lisp_parse);
+  let span = lisp_parse.clone().unwrap().next().unwrap().as_span();
+  println!("{:?},{:?}\n\n", list_string.len(), span.end());
+}
+
 #[test]
 fn parse_numbers() {
   let valid_nums = ["1", "-1", "1.0", "-273.15", "50", "5.", ".0"];

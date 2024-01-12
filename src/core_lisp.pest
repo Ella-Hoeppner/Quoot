@@ -16,3 +16,7 @@ character = {
 string = @{ "\"" ~ character* ~ "\""}
 
 symbol = { (!(whitespace | "\"" | "(" | ")") ~ ANY)+ }
+
+terminal = _{ number | string | symbol }
+
+list = { "(" ~ whitespace* ~ ((list | terminal) ~ whitespace*)* ~ ")" }
