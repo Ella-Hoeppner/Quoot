@@ -1,7 +1,7 @@
 mod interpreter;
-mod parse;
+mod new_parse;
 use interpreter::repl;
-use parse::test_parser;
+use new_parse::test_parser;
 
 fn main() {
   //repl();
