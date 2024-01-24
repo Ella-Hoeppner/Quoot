@@ -2,6 +2,7 @@
 pub enum QuootParseError {
   UnmatchedCloser,
   UnclosedOpener,
+  UnclosedString,
 }
 
 fn is_whitespace(c: char) -> bool {
@@ -41,10 +42,11 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       break;
     }
     let char = chars[char_index];
+    let string_opener = char == '"';
     let whitespace = is_whitespace(char);
     let opener = char == '(';
     let closer = char == ')';
-    if opener || closer || whitespace {
+    if string_opener || opener || closer || whitespace {
       if consumed_index != char_index {
         sexp_insert(
           root,
@@ -53,6 +55,26 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         );
       }
       consumed_index = char_index + 1;
+    }
+    if string_opener {
+      loop {
+        char_index += 1;
+        if char_index >= chars.len() {
+          return Err(QuootParseError::UnclosedString);
+        }
+        let string_char = chars[char_index];
+        if string_char == '\\' {
+          char_index += 1
+        } else if string_char == '"' {
+          sexp_insert(
+            root,
+            Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
+            opener_indeces.len(),
+          );
+          consumed_index = char_index + 1;
+          break;
+        }
+      }
     }
     if opener {
       sexp_insert(root, Sexp::List(vec![]), opener_indeces.len());
