@@ -1,3 +1,6 @@
+use crate::parse::parse;
+use crate::parse::QuootParseError;
+use crate::parse::QuootType;
 use std::io;
 use std::io::Write;
 
@@ -6,8 +9,8 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn eval(form: &str) -> &str {
-  form
+fn eval(form: &str) -> Result<QuootType, QuootParseError> {
+  parse(form)
 }
 
 pub fn repl() {
@@ -22,7 +25,7 @@ pub fn repl() {
       break;
     }
     let eval_result = eval(trimmed_input);
-    println!("{eval_result}");
+    println!("{:?}", eval_result);
     input_buffer.clear();
     print_prompt();
   }
