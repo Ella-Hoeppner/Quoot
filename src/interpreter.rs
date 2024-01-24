@@ -1,6 +1,6 @@
 use crate::parse::parse;
+use crate::parse::QuootExpression;
 use crate::parse::QuootParseError;
-use crate::parse::QuootType;
 use std::io;
 use std::io::Write;
 
@@ -9,7 +9,7 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn eval(form: &str) -> Result<QuootType, QuootParseError> {
+fn eval(form: &str) -> Result<Vec<QuootExpression>, QuootParseError> {
   parse(form)
 }
 
