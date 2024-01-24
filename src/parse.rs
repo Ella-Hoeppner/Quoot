@@ -1,10 +1,4 @@
 #[derive(Debug)]
-pub enum QuootExpression {
-  List(Vec<QuootExpression>),
-  Symbol(String),
-}
-
-#[derive(Debug)]
 pub enum QuootParseError {
   UnmatchedCloser,
   UnclosedOpener,
@@ -14,65 +8,77 @@ fn is_whitespace(c: char) -> bool {
   c == ' ' || c == '\t' || c == '\n'
 }
 
-pub fn parse_chars(chars: &[char]) -> Result<Vec<QuootExpression>, QuootParseError> {
+#[derive(Debug, Clone)]
+pub enum Sexp {
+  List(Vec<Sexp>),
+  Leaf(String),
+}
+
+fn sexp_insert(sexp: &mut Sexp, value: Sexp, depth: usize) {
+  if depth == 0 {
+    match sexp {
+      Sexp::List(values) => values.push(value),
+      Sexp::Leaf(_) => panic!("sexp_insert trying to insert into a leaf"),
+    }
+  } else {
+    match sexp {
+      Sexp::List(values) => {
+        let index = values.len() - 1;
+        sexp_insert(&mut values[index], value, depth - 1)
+      }
+      Sexp::Leaf(_) => panic!("sexp_insert trying to descend into a leaf"),
+    }
+  }
+}
+
+pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
+  let root: &mut Sexp = &mut Sexp::List(vec![]);
   let mut char_index: usize = 0;
-  let mut consumption_index: usize = 0;
-  let mut opener_index: usize = usize::MAX;
-  let mut tree_depth: usize = 0;
-  let mut elements: Vec<QuootExpression> = vec![];
+  let mut consumed_index: usize = 0;
+  let mut opener_indeces: Vec<usize> = vec![];
   loop {
     if char_index >= chars.len() {
       break;
     }
     let char = chars[char_index];
-    if char == '(' {
-      if tree_depth == 0 {
-        opener_index = char_index;
+    let whitespace = is_whitespace(char);
+    let opener = char == '(';
+    let closer = char == ')';
+    if opener || closer || whitespace {
+      if consumed_index != char_index {
+        sexp_insert(
+          root,
+          Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
+          opener_indeces.len(),
+        );
       }
-      tree_depth += 1;
+      consumed_index = char_index + 1;
     }
-    if char == ')' {
-      if tree_depth == 0 {
+    if opener {
+      sexp_insert(root, Sexp::List(vec![]), opener_indeces.len());
+      opener_indeces.push(char_index);
+    }
+    if closer {
+      if opener_indeces.len() == 0 {
         return Err(QuootParseError::UnmatchedCloser);
       }
-      if tree_depth == 1 {
-        let internal_chars = &chars[opener_index + 1..char_index];
-        let result = parse_chars(internal_chars);
-        match result {
-          Ok(expressions) => elements.push(QuootExpression::List(expressions)),
-          Err(error) => return Err(error),
-        };
-        opener_index = usize::MAX;
-        consumption_index = char_index + 1;
-      }
-      tree_depth -= 1;
-    }
-    if tree_depth == 0 && is_whitespace(char) {
-      if char_index != consumption_index {
-        elements.push(QuootExpression::Symbol(
-          chars[consumption_index..char_index].iter().collect(),
-        ));
-      }
-      consumption_index = char_index + 1;
+      opener_indeces.pop();
     }
     char_index += 1;
   }
-  if opener_index != usize::MAX {
+  if opener_indeces.len() != 0 {
     return Err(QuootParseError::UnclosedOpener);
   }
-  if consumption_index < chars.len() {
-    elements.push(QuootExpression::Symbol(
-      chars[consumption_index..chars.len()].iter().collect(),
-    ));
+  if consumed_index < chars.len() - 1 {
+    sexp_insert(
+      root,
+      Sexp::Leaf(chars[consumed_index..chars.len()].iter().collect()),
+      opener_indeces.len(),
+    );
   }
-  Ok(elements)
+  return Ok(root.to_owned());
 }
 
-pub fn parse(s: &str) -> Result<Vec<QuootExpression>, QuootParseError> {
-  let chars: Vec<char> = s.chars().collect();
-  parse_chars(&chars)
-}
-
-pub fn test_parser() {
-  println!("\n{:?}", parse("(hello!)"));
+pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
+  parse_chars(s.chars().collect())
 }
