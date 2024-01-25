@@ -59,9 +59,10 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   ];
   struct Opening {
     char_index: usize,
-    delimiter_index: usize,
+    is_prefix: bool,
+    delimiter_or_prefix_index: usize,
   }
-  let mut active_openers: Vec<Opening> = vec![];
+  let mut active_openings: Vec<Opening> = vec![];
   loop {
     if char_index >= chars.len() {
       break;
@@ -82,17 +83,27 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     let closer_index = (0..delimiters.len()).rev().find(|delimiter_index| {
       chars_match(&delimiters[*delimiter_index].1, &chars[char_index..])
     });
-    if (string_opener
-      || opener_index != None
-      || closer_index != None
-      || whitespace)
-      && consumed_index != char_index
+    if consumed_index != char_index
+      && (string_opener
+        || opener_index.is_some()
+        || closer_index.is_some()
+        || whitespace)
     {
       sexp_insert(
         root,
         Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
-        active_openers.len(),
+        active_openings.len(),
       );
+      if whitespace {
+        match active_openings.last() {
+          Some(next_opening) => {
+            if next_opening.is_prefix {
+              active_openings.pop();
+            }
+          }
+          None => (),
+        }
+      }
     };
     if string_opener {
       let string_start_index = char_index;
@@ -110,7 +121,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
             Sexp::Leaf(
               chars[string_start_index..char_index + 1].iter().collect(),
             ),
-            active_openers.len(),
+            active_openings.len(),
           );
           break;
         }
@@ -119,38 +130,58 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     char_index += match prefix_index {
       Some(i) => {
         let prefix = &prefixes[i];
-        sexp_insert(root, Sexp::Leaf(prefix.1.clone()), active_openers.len());
+        sexp_insert(root, Sexp::List(vec![]), active_openings.len());
+        active_openings.push(Opening {
+          char_index: char_index,
+          is_prefix: true,
+          delimiter_or_prefix_index: i,
+        });
+        sexp_insert(root, Sexp::Leaf(prefix.1.clone()), active_openings.len());
         prefix.0.len()
       }
       None => match opener_index {
         Some(i) => {
-          sexp_insert(root, Sexp::List(vec![]), active_openers.len());
-          active_openers.push(Opening {
+          sexp_insert(root, Sexp::List(vec![]), active_openings.len());
+          active_openings.push(Opening {
             char_index: char_index,
-            delimiter_index: i,
+            is_prefix: false,
+            delimiter_or_prefix_index: i,
           });
           let delimiter = &delimiters[i];
           match delimiter.2.clone() {
-            Some(delimiter_tag) => {
-              sexp_insert(root, Sexp::Leaf(delimiter_tag), active_openers.len())
-            }
+            Some(delimiter_tag) => sexp_insert(
+              root,
+              Sexp::Leaf(delimiter_tag),
+              active_openings.len(),
+            ),
             None => (),
           }
           delimiter.0.len()
         }
         None => match closer_index {
-          Some(i) => match active_openers.pop() {
+          Some(i) => match active_openings.pop() {
             None => {
               return Err(QuootParseError::UnmatchedCloser(
                 delimiters[i].1.iter().collect(),
               ))
             }
             Some(opening) => {
-              if i != opening.delimiter_index {
+              if i != opening.delimiter_or_prefix_index {
                 return Err(QuootParseError::MismatchedCloser(
-                  delimiters[opening.delimiter_index].0.iter().collect(),
+                  delimiters[opening.delimiter_or_prefix_index]
+                    .0
+                    .iter()
+                    .collect(),
                   delimiters[i].1.iter().collect(),
                 ));
+              }
+              match active_openings.last() {
+                Some(next_opening) => {
+                  if next_opening.is_prefix {
+                    active_openings.pop();
+                  }
+                }
+                None => (),
               }
               delimiters[i].1.len()
             }
@@ -160,27 +191,34 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       },
     };
     if string_opener
-      || prefix_index != None
-      || opener_index != None
-      || closer_index != None
+      || prefix_index.is_some()
+      || opener_index.is_some()
+      || closer_index.is_some()
       || whitespace
     {
       consumed_index = char_index;
     }
   }
-  match active_openers.pop() {
-    Some(opening) => {
-      return Err(QuootParseError::UnclosedOpener(
-        delimiters[opening.delimiter_index].0.iter().collect(),
-      ))
+  loop {
+    match active_openings.pop() {
+      Some(opening) => {
+        if !opening.is_prefix {
+          return Err(QuootParseError::UnclosedOpener(
+            delimiters[opening.delimiter_or_prefix_index]
+              .0
+              .iter()
+              .collect(),
+          ));
+        }
+      }
+      None => break,
     }
-    None => (),
   }
   if consumed_index < chars.len() - 1 {
     sexp_insert(
       root,
       Sexp::Leaf(chars[consumed_index..chars.len()].iter().collect()),
-      active_openers.len(),
+      active_openings.len(),
     );
   }
   return Ok(root.to_owned());
