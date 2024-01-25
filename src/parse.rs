@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub enum QuootParseError {
   UnmatchedCloser,
+  MismatchedCloser(String, String),
   UnclosedOpener,
   UnclosedString,
 }
@@ -32,11 +33,27 @@ fn sexp_insert(sexp: &mut Sexp, value: Sexp, depth: usize) {
   }
 }
 
+pub fn chars_match(pattern: &Vec<char>, chars: &[char]) -> bool {
+  chars.len() >= pattern.len()
+    && match (0..pattern.len())
+      .map(|i| pattern[i] == chars[i])
+      .reduce(|acc, e| acc && e)
+    {
+      None => true,
+      Some(b) => b,
+    }
+}
+
 pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   let root: &mut Sexp = &mut Sexp::List(vec![]);
   let mut char_index: usize = 0;
   let mut consumed_index: usize = 0;
-  let mut opener_indeces: Vec<usize> = vec![];
+  let delimiters: Vec<(Vec<char>, Vec<char>, Option<String>)> = vec![
+    (vec!['('], vec![')'], None),
+    (vec!['['], vec![']'], Some("vector".to_string())),
+    (vec!['{'], vec!['}'], Some("hashmap".to_string())),
+  ];
+  let mut active_openers: Vec<(usize, usize)> = vec![];
   loop {
     if char_index >= chars.len() {
       break;
@@ -44,18 +61,22 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     let char = chars[char_index];
     let string_opener = char == '"';
     let whitespace = is_whitespace(char);
-    let opener = char == '(';
-    let closer = char == ')';
-    if string_opener || opener || closer || whitespace {
+    let opener_index = (0..delimiters.len())
+      .rev()
+      .find(|delimiter_index| chars_match(&delimiters[*delimiter_index].0, &chars[char_index..]));
+    let closer_index = (0..delimiters.len())
+      .rev()
+      .find(|delimiter_index| chars_match(&delimiters[*delimiter_index].1, &chars[char_index..]));
+    if string_opener || opener_index != None || closer_index != None || whitespace {
       if consumed_index != char_index {
         sexp_insert(
           root,
           Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
-          opener_indeces.len(),
+          active_openers.len(),
         );
       }
       consumed_index = char_index + 1;
-    }
+    };
     if string_opener {
       loop {
         char_index += 1;
@@ -69,33 +90,49 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
           sexp_insert(
             root,
             Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
-            opener_indeces.len(),
+            active_openers.len(),
           );
           consumed_index = char_index + 1;
           break;
         }
       }
     }
-    if opener {
-      sexp_insert(root, Sexp::List(vec![]), opener_indeces.len());
-      opener_indeces.push(char_index);
-    }
-    if closer {
-      if opener_indeces.len() == 0 {
-        return Err(QuootParseError::UnmatchedCloser);
+    char_index += match opener_index {
+      Some(i) => {
+        sexp_insert(root, Sexp::List(vec![]), active_openers.len());
+        active_openers.push((char_index, i));
+        let delimiter = &delimiters[i];
+        match delimiter.2.clone() {
+          Some(delimiter_tag) => sexp_insert(root, Sexp::Leaf(delimiter_tag), active_openers.len()),
+          None => (),
+        }
+        delimiter.0.len()
       }
-      opener_indeces.pop();
-    }
-    char_index += 1;
+      None => match closer_index {
+        Some(i) => match active_openers.pop() {
+          None => return Err(QuootParseError::UnmatchedCloser),
+          Some((_, opener_index)) => {
+            if i != opener_index {
+              return Err(QuootParseError::MismatchedCloser(
+                delimiters[opener_index].0.iter().collect(),
+                delimiters[i].1.iter().collect(),
+              ));
+            }
+            delimiters[i].1.len()
+          }
+        },
+        None => 1,
+      },
+    };
   }
-  if opener_indeces.len() != 0 {
+  if active_openers.len() != 0 {
     return Err(QuootParseError::UnclosedOpener);
   }
   if consumed_index < chars.len() - 1 {
     sexp_insert(
       root,
       Sexp::Leaf(chars[consumed_index..chars.len()].iter().collect()),
-      opener_indeces.len(),
+      active_openers.len(),
     );
   }
   return Ok(root.to_owned());
