@@ -3,9 +3,10 @@
 WIP clojure-ish metaprogramming-focused lisp
 
 ## to do
-* parser for the core lisp
-  * only needs a few types:
-    * numbers
-    * strings
-    * symbols
-    * lists
+### high priority
+* fix bug where delimiters with the same closer cause MismatchedCloser error
+* introduction of custom delimiters with `(#delimit <opener> <closer> <tag> ...)`
+* introduction of custom prefix operators with `(#prefix <prefix> <tag>)` 
+
+### low priority
+* in parser, use `Opening.char_index` to give more descriptive reader errors

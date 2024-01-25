@@ -14,14 +14,14 @@ fn eval(form: &str) -> Result<Sexp, QuootParseError> {
 }
 
 pub fn repl() {
-  println!("Malice repl started!\n");
+  println!("Quoot repl started!\n");
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
   while stdin.read_line(&mut input_buffer).is_ok() {
     let trimmed_input = input_buffer.trim_end();
     if trimmed_input.eq("#EXIT") {
-      println!("\nExiting Malice repl\n");
+      println!("\nExiting Quoot repl\n");
       break;
     }
     match eval(trimmed_input) {

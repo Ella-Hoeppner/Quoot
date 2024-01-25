@@ -9,7 +9,7 @@ pub enum QuootParseError {
 }
 
 fn is_whitespace(c: char) -> bool {
-  c == ' ' || c == '\t' || c == '\n'
+  c == ' ' || c == ',' || c == '\t' || c == '\n'
 }
 
 #[derive(Clone)]
@@ -76,6 +76,12 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     (vec!['('], vec![')'], None),
     (vec!['['], vec![']'], Some("vector".to_string())),
     (vec!['{'], vec!['}'], Some("hashmap".to_string())),
+    /*(vec!['#', '['], vec![']'], Some("set".to_string())),
+    (
+      vec!['#', '{'],
+      vec!['}'],
+      Some("ordered-hashmap".to_string()),
+    ),*/
   ];
   let prefixes: Vec<(Vec<char>, String)> = vec![
     (vec!['\''], "quote".to_string()),
@@ -107,6 +113,10 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     let closer_index = (0..delimiters.len()).rev().find(|delimiter_index| {
       chars_match(&delimiters[*delimiter_index].1, &chars[char_index..])
     });
+    let whitespace = prefix_index.is_none()
+      && opener_index.is_none()
+      && closer_index.is_none()
+      && is_whitespace(char);
     if consumed_index != char_index
       && (string_opener
         || opener_index.is_some()
@@ -201,48 +211,46 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
           delimiter.0.len()
         }
         None => match closer_index {
-          // If this is a closer, check that it matches the innermost opener.
-          // If so, pop that opener off the stack and continue, and otherwise
-          // return an error.
-          Some(i) => match active_openings.pop() {
-            None => {
-              return Err(QuootParseError::UnmatchedCloser(
-                delimiters[i].1.iter().collect(),
-              ))
-            }
-            Some(opening) => {
-              if opening.is_prefix {
-                return Err(QuootParseError::UnmatchedCloser(
-                  delimiters[opening.delimiter_or_prefix_index]
-                    .0
-                    .iter()
-                    .collect(),
-                ));
-              }
-              if i != opening.delimiter_or_prefix_index {
-                return Err(QuootParseError::MismatchedCloser(
-                  delimiters[opening.delimiter_or_prefix_index]
-                    .0
-                    .iter()
-                    .collect(),
-                  delimiters[i].1.iter().collect(),
-                ));
-              }
-              // Check whether the next belongs to a prefix, and if so close
-              // that opener.
-              loop {
-                match active_openings.last() {
-                  Some(next_opening) => {
-                    if next_opening.is_prefix {
-                      active_openings.pop();
-                    } else {
-                      break;
+          // If this is a closer, start popping off active openings until we
+          // find a non-prefix (as any open prefixes should close with this
+          // closer). Check that this non-prefix opening corresponds to this
+          // closer, returning an error otherwise.
+          Some(i) => loop {
+            match active_openings.pop() {
+              Some(opening) => {
+                if !opening.is_prefix {
+                  if i != opening.delimiter_or_prefix_index {
+                    return Err(QuootParseError::MismatchedCloser(
+                      delimiters[opening.delimiter_or_prefix_index]
+                        .0
+                        .iter()
+                        .collect(),
+                      delimiters[i].1.iter().collect(),
+                    ));
+                  }
+                  // Check whether the next belongs to a prefix, and if so close
+                  // that opener. Repeat this until there are no openings left,
+                  // or we encounter a non-prefix opening.
+                  loop {
+                    match active_openings.last() {
+                      Some(next_opening) => {
+                        if next_opening.is_prefix {
+                          active_openings.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                      None => break,
                     }
                   }
-                  None => break,
+                  break delimiters[i].1.len();
                 }
               }
-              delimiters[i].1.len()
+              None => {
+                return Err(QuootParseError::UnmatchedCloser(
+                  delimiters[i].1.iter().collect(),
+                ))
+              }
             }
           },
           None => 1,
