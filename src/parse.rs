@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug)]
 pub enum QuootParseError {
   UnmatchedCloser(String),
@@ -10,10 +12,29 @@ fn is_whitespace(c: char) -> bool {
   c == ' ' || c == '\t' || c == '\n'
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Sexp {
   List(Vec<Sexp>),
   Leaf(String),
+}
+
+impl fmt::Display for Sexp {
+  fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match &self {
+      Sexp::Leaf(token) => fmt.write_str(token)?,
+      Sexp::List(sub_expressions) => {
+        fmt.write_str("(")?;
+        let mut separator = "";
+        for sexp in sub_expressions {
+          fmt.write_str(separator)?;
+          fmt.write_str(&sexp.to_string())?;
+          separator = " ";
+        }
+        fmt.write_str(")")?;
+      }
+    }
+    Ok(())
+  }
 }
 
 fn sexp_insert(sexp: &mut Sexp, value: Sexp, depth: usize) {

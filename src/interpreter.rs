@@ -24,8 +24,10 @@ pub fn repl() {
       println!("\nExiting Malice repl\n");
       break;
     }
-    let eval_result = eval(trimmed_input);
-    println!("{:?}", eval_result);
+    match eval(trimmed_input) {
+      Err(e) => println!("{:?}", e),
+      Ok(sexp) => println!("{:?}", sexp.to_string()),
+    }
     input_buffer.clear();
     print_prompt();
   }
