@@ -4,7 +4,6 @@ WIP clojure-ish metaprogramming-focused lisp
 
 ## to do
 ### high priority
-* fix bug where delimiters with the same closer cause MismatchedCloser error
 * introduction of custom delimiters with `(#delimit <opener> <closer> <tag> ...)`
 * introduction of custom prefix operators with `(#prefix <prefix> <tag>)` 
 

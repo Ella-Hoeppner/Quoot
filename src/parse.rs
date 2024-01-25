@@ -54,7 +54,7 @@ fn sexp_insert(sexp: &mut Sexp, value: Sexp, depth: usize) {
   }
 }
 
-pub fn chars_match(pattern: &Vec<char>, chars: &[char]) -> bool {
+pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
   chars.len() >= pattern.len()
     && match (0..pattern.len())
       .map(|i| pattern[i] == chars[i])
@@ -72,20 +72,16 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   }
   let mut char_index: usize = 0;
   let mut consumed_index: usize = 0;
-  let delimiters: Vec<(Vec<char>, Vec<char>, Option<String>)> = vec![
-    (vec!['('], vec![')'], None),
-    (vec!['['], vec![']'], Some("vector".to_string())),
-    (vec!['{'], vec!['}'], Some("hashmap".to_string())),
-    /*(vec!['#', '['], vec![']'], Some("set".to_string())),
-    (
-      vec!['#', '{'],
-      vec!['}'],
-      Some("ordered-hashmap".to_string()),
-    ),*/
+  let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
+    (&['('], &[')'], None),
+    (&['['], &[']'], Some("vector".to_string())),
+    (&['{'], &['}'], Some("hashmap".to_string())),
+    (&['#', '['], &[']'], Some("set".to_string())),
+    (&['#', '{'], &['}'], Some("ordered-hashmap".to_string())),
   ];
-  let prefixes: Vec<(Vec<char>, String)> = vec![
-    (vec!['\''], "quote".to_string()),
-    (vec!['~'], "unquote".to_string()),
+  let prefixes: Vec<(&[char], String)> = vec![
+    (&['\''], "quote".to_string()),
+    (&['~'], "unquote".to_string()),
   ];
   struct Opening {
     char_index: usize,
@@ -99,7 +95,6 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     }
     let char = chars[char_index];
     let string_opener = char == '"';
-    let whitespace = is_whitespace(char);
     let prefix_index = if consumed_index == char_index {
       (0..prefixes.len()).rev().find(|prefix_index| {
         chars_match(&prefixes[*prefix_index].0, &chars[char_index..])
@@ -214,23 +209,18 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
           // If this is a closer, start popping off active openings until we
           // find a non-prefix (as any open prefixes should close with this
           // closer). Check that this non-prefix opening corresponds to this
-          // closer, returning an error otherwise.
-          Some(i) => loop {
+          // closer, returning an error otherwise. The loop returns an index
+          // of the matched closer (as multiple delimiters may have the same
+          // closer (the case of overlapping closers is handled deeper in the
+          // loop)), which is used to look up the length of the closer to move
+          // char_index.
+          Some(i) => delimiters[loop {
             match active_openings.pop() {
               Some(opening) => {
                 if !opening.is_prefix {
-                  if i != opening.delimiter_or_prefix_index {
-                    return Err(QuootParseError::MismatchedCloser(
-                      delimiters[opening.delimiter_or_prefix_index]
-                        .0
-                        .iter()
-                        .collect(),
-                      delimiters[i].1.iter().collect(),
-                    ));
-                  }
-                  // Check whether the next belongs to a prefix, and if so close
-                  // that opener. Repeat this until there are no openings left,
-                  // or we encounter a non-prefix opening.
+                  // Check whether the next opener belongs to a prefix, and if
+                  // so close that opener. Repeat this until there are no
+                  // openings left, or we encounter a non-prefix opening.
                   loop {
                     match active_openings.last() {
                       Some(next_opening) => {
@@ -243,7 +233,28 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
                       None => break,
                     }
                   }
-                  break delimiters[i].1.len();
+                  if i != opening.delimiter_or_prefix_index {
+                    // If the closer type does not match the one expected by the
+                    // opener, check whether the expected closer is also matched
+                    // by the current string. If so, accept the closer and
+                    // return the expected length rather than the length of the
+                    // original matched closer, otherwise return an error.
+                    if chars_match(
+                      &delimiters[opening.delimiter_or_prefix_index].1,
+                      &chars[char_index..],
+                    ) {
+                      println!("matched other closer!!");
+                      break opening.delimiter_or_prefix_index;
+                    }
+                    return Err(QuootParseError::MismatchedCloser(
+                      delimiters[opening.delimiter_or_prefix_index]
+                        .0
+                        .iter()
+                        .collect(),
+                      delimiters[i].1.iter().collect(),
+                    ));
+                  }
+                  break i;
                 }
               }
               None => {
@@ -252,7 +263,9 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
                 ))
               }
             }
-          },
+          }]
+          .1
+          .len(),
           None => 1,
         },
       },
