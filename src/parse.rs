@@ -46,6 +46,9 @@ pub fn chars_match(pattern: &Vec<char>, chars: &[char]) -> bool {
 
 pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   let root: &mut Sexp = &mut Sexp::List(vec![]);
+  if chars.is_empty() {
+    return Ok(root.to_owned());
+  }
   let mut char_index: usize = 0;
   let mut consumed_index: usize = 0;
   let delimiters: Vec<(Vec<char>, Vec<char>, Option<String>)> = vec![
@@ -89,23 +92,34 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         || closer_index.is_some()
         || whitespace)
     {
+      // If consumption isn't up to the current index, and this character
+      // indicates the previous token should end, add previous token to AST.
       sexp_insert(
         root,
         Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
         active_openings.len(),
       );
       if whitespace {
-        match active_openings.last() {
-          Some(next_opening) => {
-            if next_opening.is_prefix {
-              active_openings.pop();
+        // If this character is whitespace, indicating that this was the end of
+        // a terminal token rather than a closing delimiter, check if innermost
+        // opener is a prefix (as opposed to a delimiter), and if so close it.
+        loop {
+          match active_openings.last() {
+            Some(next_opening) => {
+              if next_opening.is_prefix {
+                active_openings.pop();
+              } else {
+                break;
+              }
             }
+            None => break,
           }
-          None => (),
         }
       }
     };
     if string_opener {
+      // If this character is a ", indicating the start of a string, consume
+      // the entire string.
       let string_start_index = char_index;
       loop {
         char_index += 1;
@@ -127,8 +141,13 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         }
       }
     }
+
+    // Handle the case where this character is the start of a prefix, opener,
+    // or closer, and adjust the character index accordingly.
     char_index += match prefix_index {
       Some(i) => {
+        // If this is a prefix, add a list, with the tag of the prefix as the
+        // first element of the list, to the AST.
         let prefix = &prefixes[i];
         sexp_insert(root, Sexp::List(vec![]), active_openings.len());
         active_openings.push(Opening {
@@ -141,6 +160,8 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       }
       None => match opener_index {
         Some(i) => {
+          // If this is an opener, add a list, with the tag of the delimiter
+          // pair (if it has one) as the first element of the list, to the AST.
           sexp_insert(root, Sexp::List(vec![]), active_openings.len());
           active_openings.push(Opening {
             char_index: char_index,
@@ -159,6 +180,9 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
           delimiter.0.len()
         }
         None => match closer_index {
+          // If this is a closer, check that it matches the innermost opener.
+          // If so, pop that opener off the stack and continue, and otherwise
+          // return an error.
           Some(i) => match active_openings.pop() {
             None => {
               return Err(QuootParseError::UnmatchedCloser(
@@ -166,6 +190,14 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
               ))
             }
             Some(opening) => {
+              if opening.is_prefix {
+                return Err(QuootParseError::UnmatchedCloser(
+                  delimiters[opening.delimiter_or_prefix_index]
+                    .0
+                    .iter()
+                    .collect(),
+                ));
+              }
               if i != opening.delimiter_or_prefix_index {
                 return Err(QuootParseError::MismatchedCloser(
                   delimiters[opening.delimiter_or_prefix_index]
@@ -175,13 +207,19 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
                   delimiters[i].1.iter().collect(),
                 ));
               }
-              match active_openings.last() {
-                Some(next_opening) => {
-                  if next_opening.is_prefix {
-                    active_openings.pop();
+              // Check whether the next belongs to a prefix, and if so close
+              // that opener.
+              loop {
+                match active_openings.last() {
+                  Some(next_opening) => {
+                    if next_opening.is_prefix {
+                      active_openings.pop();
+                    } else {
+                      break;
+                    }
                   }
+                  None => break,
                 }
-                None => (),
               }
               delimiters[i].1.len()
             }
@@ -190,6 +228,8 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         },
       },
     };
+    // Catch the consumption up to the current position, if the current
+    // character matched with something for which that should be done.
     if string_opener
       || prefix_index.is_some()
       || opener_index.is_some()
@@ -199,6 +239,8 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       consumed_index = char_index;
     }
   }
+  // Check all remaining active openings, and throw an error if any of them
+  // are unclosed delimiters (as opposed to prefixes).
   loop {
     match active_openings.pop() {
       Some(opening) => {
@@ -214,7 +256,11 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       None => break,
     }
   }
-  if consumed_index < chars.len() - 1 {
+
+  // If consumption isn't caught up to the end of the string, that means the
+  // string must end with a terminal not followed by whitespace, so add one
+  // final leaf to the AST.
+  if consumed_index < char_index {
     sexp_insert(
       root,
       Sexp::Leaf(chars[consumed_index..chars.len()].iter().collect()),
