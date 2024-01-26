@@ -12,7 +12,7 @@ fn is_whitespace(c: char) -> bool {
   c == ' ' || c == ',' || c == '\t' || c == '\n'
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Sexp {
   List(Vec<Sexp>),
   Leaf(String),
@@ -307,4 +307,71 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
 
 pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
   parse_chars(s.chars().collect())
+}
+
+#[test]
+fn test_parse() {
+  [
+    ("()", Sexp::List(vec![])),
+    ("[]", Sexp::List(vec![Sexp::Leaf("vector".to_string())])),
+    ("{}", Sexp::List(vec![Sexp::Leaf("hashmap".to_string())])),
+    ("hello!", Sexp::Leaf("hello!".to_string())),
+    (
+      "(+ 1 2)",
+      Sexp::List(vec![
+        Sexp::Leaf("+".to_string()),
+        Sexp::Leaf("1".to_string()),
+        Sexp::Leaf("2".to_string()),
+      ]),
+    ),
+    (
+      "'(+ 1 2)",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
+        Sexp::List(vec![
+          Sexp::Leaf("+".to_string()),
+          Sexp::Leaf("1".to_string()),
+          Sexp::Leaf("2".to_string()),
+        ]),
+      ]),
+    ),
+    (
+      "~'()",
+      Sexp::List(vec![
+        Sexp::Leaf("unquote".to_string()),
+        Sexp::List(vec![Sexp::Leaf("quote".to_string()), Sexp::List(vec![])]),
+      ]),
+    ),
+    (
+      "'a",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
+        Sexp::Leaf("a".to_string()),
+      ]),
+    ),
+    (
+      "''a",
+      Sexp::List(vec![
+        Sexp::Leaf("quote".to_string()),
+        Sexp::List(vec![
+          Sexp::Leaf("quote".to_string()),
+          Sexp::Leaf("a".to_string()),
+        ]),
+      ]),
+    ),
+  ]
+  .into_iter()
+  .for_each(|(str, sexp)| {
+    let wrapped_sexp = Sexp::List(vec![sexp]);
+    match parse(str) {
+      Ok(parsed_sexp) => assert_eq!(
+        wrapped_sexp, parsed_sexp,
+        "String {:?} was not parsed as expected.",
+        str
+      ),
+      Err(e) => {
+        assert!(false, "Failed to parse string {:?}, got error {:?}", str, e)
+      }
+    };
+  });
 }

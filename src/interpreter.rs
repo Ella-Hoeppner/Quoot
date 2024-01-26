@@ -68,15 +68,11 @@ impl fmt::Display for QuootValue {
   }
 }
 
+#[derive(Default)]
 struct Env {
   entries: HashMap<String, QuootValue>,
 }
 impl Env {
-  pub fn empty() -> Env {
-    Env {
-      entries: HashMap::new(),
-    }
-  }
   pub fn merge(self, other_env: Env) -> Env {
     Env {
       entries: self.entries.into_iter().chain(other_env.entries).collect(),
@@ -84,14 +80,9 @@ impl Env {
   }
 }
 
+#[derive(Default)]
 pub struct InterpreterState {
   env: Env,
-}
-
-impl InterpreterState {
-  pub fn new() -> InterpreterState {
-    InterpreterState { env: Env::empty() }
-  }
 }
 
 fn print_prompt() {
@@ -107,15 +98,15 @@ fn eval(
 }
 
 pub fn repl() {
-  println!("Quoot repl started!\n");
-  let state = &mut InterpreterState::new();
+  println!("\nQuoot repl started :D\n");
+  let state = &mut InterpreterState::default();
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
   while stdin.read_line(&mut input_buffer).is_ok() {
     let trimmed_input = input_buffer.trim_end();
     if trimmed_input.eq("#EXIT") {
-      println!("\nExiting Quoot repl\n");
+      println!("\nQuoot repl stopped. bye!!\n");
       break;
     }
     match eval(trimmed_input, state) {
