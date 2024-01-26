@@ -62,13 +62,87 @@ pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
     }
 }
 
-pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
-  let root: &mut Sexp = &mut Sexp::List(vec![]);
-  if chars.is_empty() {
-    return Ok(root.to_owned());
+struct Opening {
+  char_index: usize,
+  is_prefix: bool,
+  delimiter_or_prefix_index: usize,
+}
+struct ParserState {
+  root: Sexp,
+  opening_stack: Vec<Opening>,
+}
+impl ParserState {
+  pub fn new() -> ParserState {
+    ParserState {
+      root: Sexp::List(vec![]),
+      opening_stack: vec![],
+    }
   }
-  let mut char_index: usize = 0;
-  let mut consumed_index: usize = 0;
+  fn insert_sexp(&mut self, sexp: Sexp) {
+    sexp_insert(&mut self.root, sexp, self.opening_stack.len());
+  }
+  fn peek_opening(&mut self) -> Option<&Opening> {
+    self.opening_stack.last()
+  }
+  pub fn insert_token(&mut self, token: String) {
+    self.insert_sexp(Sexp::Leaf(token));
+  }
+  pub fn open_prefix(
+    &mut self,
+    char_index: usize,
+    prefix_index: usize,
+    tag: &String,
+  ) {
+    self.insert_sexp(Sexp::List(vec![]));
+    self.opening_stack.push(Opening {
+      char_index,
+      is_prefix: true,
+      delimiter_or_prefix_index: prefix_index,
+    });
+    self.insert_token(tag.clone());
+  }
+  pub fn close_prefixes(&mut self) {
+    loop {
+      match self.peek_opening() {
+        None => break,
+        Some(next_opening) => {
+          if next_opening.is_prefix {
+            self.opening_stack.pop();
+          } else {
+            break;
+          }
+        }
+      }
+    }
+  }
+  pub fn open_list(
+    &mut self,
+    char_index: usize,
+    delimiter_index: usize,
+    tag: &Option<String>,
+  ) {
+    self.insert_sexp(Sexp::List(vec![]));
+    self.opening_stack.push(Opening {
+      char_index,
+      is_prefix: false,
+      delimiter_or_prefix_index: delimiter_index,
+    });
+    match tag.clone() {
+      Some(delimiter_tag) => self.insert_token(delimiter_tag),
+      None => (),
+    }
+  }
+  pub fn close_list(&mut self) -> Option<Opening> {
+    self.close_prefixes();
+    self.opening_stack.pop()
+  }
+}
+
+pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
+  if chars.is_empty() {
+    return Ok(Sexp::List(vec![]));
+  }
+
   let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
     (&['('], &[')'], None),
     (&['['], &[']'], Some("vector".to_string())),
@@ -80,12 +154,11 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     (&['\''], "quote".to_string()),
     (&['~'], "unquote".to_string()),
   ];
-  struct Opening {
-    char_index: usize,
-    is_prefix: bool,
-    delimiter_or_prefix_index: usize,
-  }
-  let mut active_openings: Vec<Opening> = vec![];
+
+  let parser_state: &mut ParserState = &mut ParserState::new();
+  let mut char_index: usize = 0;
+  let mut consumed_index: usize = 0;
+
   loop {
     if char_index >= chars.len() {
       break;
@@ -117,27 +190,13 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     {
       // If consumption isn't up to the current index, and this character
       // indicates the previous token should end, add previous token to AST.
-      sexp_insert(
-        root,
-        Sexp::Leaf(chars[consumed_index..char_index].iter().collect()),
-        active_openings.len(),
-      );
+      parser_state
+        .insert_token(chars[consumed_index..char_index].iter().collect());
       if whitespace {
         // If this character is whitespace, indicating that this was the end of
         // a terminal token rather than a closing delimiter, check if innermost
         // opener is a prefix (as opposed to a delimiter), and if so close it.
-        loop {
-          match active_openings.last() {
-            Some(next_opening) => {
-              if next_opening.is_prefix {
-                active_openings.pop();
-              } else {
-                break;
-              }
-            }
-            None => break,
-          }
-        }
+        parser_state.close_prefixes();
       }
     };
     if string_opener {
@@ -153,12 +212,8 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         if string_char == '\\' {
           char_index += 1
         } else if string_char == '"' {
-          sexp_insert(
-            root,
-            Sexp::Leaf(
-              chars[string_start_index..char_index + 1].iter().collect(),
-            ),
-            active_openings.len(),
+          parser_state.insert_token(
+            chars[string_start_index..char_index + 1].iter().collect(),
           );
           break;
         }
@@ -172,77 +227,42 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         // If this is a prefix, add a list, with the tag of the prefix as the
         // first element of the list, to the AST.
         let prefix = &prefixes[i];
-        sexp_insert(root, Sexp::List(vec![]), active_openings.len());
-        active_openings.push(Opening {
-          char_index: char_index,
-          is_prefix: true,
-          delimiter_or_prefix_index: i,
-        });
-        sexp_insert(root, Sexp::Leaf(prefix.1.clone()), active_openings.len());
+        parser_state.open_prefix(char_index, i, &prefix.1);
         prefix.0.len()
       }
       None => match opener_index {
         Some(i) => {
           // If this is an opener, add a list, with the tag of the delimiter
           // pair (if it has one) as the first element of the list, to the AST.
-          sexp_insert(root, Sexp::List(vec![]), active_openings.len());
-          active_openings.push(Opening {
-            char_index: char_index,
-            is_prefix: false,
-            delimiter_or_prefix_index: i,
-          });
           let delimiter = &delimiters[i];
-          match delimiter.2.clone() {
-            Some(delimiter_tag) => sexp_insert(
-              root,
-              Sexp::Leaf(delimiter_tag),
-              active_openings.len(),
-            ),
-            None => (),
-          }
+          parser_state.open_list(char_index, i, &delimiter.2);
           delimiter.0.len()
         }
         None => match closer_index {
-          // If this is a closer, start popping off active openings until we
-          // find a non-prefix (as any open prefixes should close with this
-          // closer). Check that this non-prefix opening corresponds to this
-          // closer, returning an error otherwise. The loop returns an index
-          // of the matched closer (as multiple delimiters may have the same
-          // closer (the case of overlapping closers is handled deeper in the
-          // loop)), which is used to look up the length of the closer to move
-          // char_index.
-          Some(i) => delimiters[loop {
-            match active_openings.pop() {
+          Some(i) => {
+            // The closer identified at this point may be inaccurate if it is
+            // the prefix of (or identical to) another closer. Therefore, to
+            // properly update the character index, the below expression
+            // ensures that the correct closer is used.
+            delimiters[match parser_state.close_list() {
               Some(opening) => {
-                if !opening.is_prefix {
-                  // Check whether the next opener belongs to a prefix, and if
-                  // so close that opener. Repeat this until there are no
-                  // openings left, or we encounter a non-prefix opening.
-                  loop {
-                    match active_openings.last() {
-                      Some(next_opening) => {
-                        if next_opening.is_prefix {
-                          active_openings.pop();
-                        } else {
-                          break;
-                        }
-                      }
-                      None => break,
-                    }
-                  }
-                  if i != opening.delimiter_or_prefix_index {
-                    // If the closer type does not match the one expected by the
-                    // opener, check whether the expected closer is also matched
-                    // by the current string. If so, accept the closer and
-                    // return the expected length rather than the length of the
-                    // original matched closer, otherwise return an error.
-                    if chars_match(
-                      &delimiters[opening.delimiter_or_prefix_index].1,
-                      &chars[char_index..],
-                    ) {
-                      println!("matched other closer!!");
-                      break opening.delimiter_or_prefix_index;
-                    }
+                parser_state.close_prefixes();
+                if i == opening.delimiter_or_prefix_index {
+                  // If the closer index matches what is expected by the
+                  // opener, just use that index.
+                  i
+                } else {
+                  // If the closer type does not match the one expected by the
+                  // opener, check whether the expected closer is also matched
+                  // by the current string. If so, accept the closer and
+                  // return the expected length rather than the length of the
+                  // original matched closer, otherwise return an error.
+                  if chars_match(
+                    &delimiters[opening.delimiter_or_prefix_index].1,
+                    &chars[char_index..],
+                  ) {
+                    opening.delimiter_or_prefix_index
+                  } else {
                     return Err(QuootParseError::MismatchedCloser(
                       delimiters[opening.delimiter_or_prefix_index]
                         .0
@@ -251,7 +271,6 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
                       delimiters[i].1.iter().collect(),
                     ));
                   }
-                  break i;
                 }
               }
               None => {
@@ -259,10 +278,10 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
                   delimiters[i].1.iter().collect(),
                 ))
               }
-            }
-          }]
-          .1
-          .len(),
+            }]
+            .1
+            .len()
+          }
           None => 1,
         },
       },
@@ -278,35 +297,27 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       consumed_index = char_index;
     }
   }
-  // Check all remaining active openings, and throw an error if any of them
-  // are unclosed delimiters (as opposed to prefixes).
-  loop {
-    match active_openings.pop() {
-      Some(opening) => {
-        if !opening.is_prefix {
-          return Err(QuootParseError::UnclosedOpener(
-            delimiters[opening.delimiter_or_prefix_index]
-              .0
-              .iter()
-              .collect(),
-          ));
-        }
-      }
-      None => break,
+  // Throw an error if there are any open lists at the end of the string.
+  match parser_state.close_list() {
+    Some(opening) => {
+      return Err(QuootParseError::UnclosedOpener(
+        delimiters[opening.delimiter_or_prefix_index]
+          .0
+          .iter()
+          .collect(),
+      ))
     }
+    None => (),
   }
 
   // If consumption isn't caught up to the end of the string, that means the
-  // string must end with a terminal not followed by whitespace, so add one
+  // string must end with a token not followed by whitespace, so add one
   // final leaf to the AST.
   if consumed_index < char_index {
-    sexp_insert(
-      root,
-      Sexp::Leaf(chars[consumed_index..chars.len()].iter().collect()),
-      active_openings.len(),
-    );
+    parser_state
+      .insert_token(chars[consumed_index..chars.len()].iter().collect());
   }
-  return Ok(root.to_owned());
+  return Ok(parser_state.root.to_owned());
 }
 
 pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
