@@ -220,6 +220,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         // If this character is whitespace, indicating that this was the end of
         // a terminal token rather than a closing delimiter, close any open
         // prefixes.
+
         parser_state.close_prefixes();
       }
     };
@@ -287,13 +288,6 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       consumed_index = char_index;
     }
   }
-  // Throw an error if there are any open lists at the end of the string.
-  match parser_state.get_open_list() {
-    Some((opener, _)) => {
-      return Err(QuootParseError::UnclosedOpener(opener.iter().collect()))
-    }
-    None => (),
-  }
 
   // If consumption isn't caught up to the end of the string, that means the
   // string must end with a token not followed by whitespace, so add one
@@ -301,6 +295,15 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   if consumed_index < char_index {
     parser_state
       .insert_token(chars[consumed_index..chars.len()].iter().collect());
+  }
+  parser_state.close_prefixes();
+
+  // Throw an error if there are any open lists at the end of the string.
+  match parser_state.get_open_list() {
+    Some((opener, _)) => {
+      return Err(QuootParseError::UnclosedOpener(opener.iter().collect()))
+    }
+    None => (),
   }
   return Ok(parser_state.finish());
 }
