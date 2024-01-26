@@ -61,15 +61,13 @@ pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
       Some(b) => b,
     }
 }
-
-struct Opening {
-  char_index: usize,
-  is_prefix: bool,
-  closer: Option<&'static [char]>,
+enum Opening {
+  Prefix,
+  List(&'static [char], &'static [char]),
 }
 struct ParserState {
   root: Sexp,
-  opening_stack: Vec<Opening>,
+  opening_stack: Vec<(usize, Opening)>,
 }
 impl ParserState {
   pub fn new() -> ParserState {
@@ -82,46 +80,43 @@ impl ParserState {
     sexp_insert(&mut self.root, sexp, self.opening_stack.len());
   }
   fn peek_opening(&mut self) -> Option<&Opening> {
-    self.opening_stack.last()
+    match self.opening_stack.last() {
+      Some(index_opening_pair) => Some(&index_opening_pair.1),
+      None => None,
+    }
   }
   pub fn insert_token(&mut self, token: String) {
     self.insert_sexp(Sexp::Leaf(token));
   }
   pub fn open_prefix(&mut self, char_index: usize, tag: &String) {
     self.insert_sexp(Sexp::List(vec![]));
-    self.opening_stack.push(Opening {
-      char_index,
-      is_prefix: true,
-      closer: None,
-    });
+    self.opening_stack.push((char_index, Opening::Prefix));
     self.insert_token(tag.clone());
   }
   pub fn close_prefixes(&mut self) {
     loop {
       match self.peek_opening() {
         None => break,
-        Some(next_opening) => {
-          if next_opening.is_prefix {
+        Some(next_opening) => match next_opening {
+          Opening::Prefix => {
             self.opening_stack.pop();
-          } else {
-            break;
           }
-        }
+          Opening::List(_, _) => break,
+        },
       }
     }
   }
   pub fn open_list(
     &mut self,
     char_index: usize,
-    tag: &Option<String>,
+    opener: &'static [char],
     closer: &'static [char],
+    tag: &Option<String>,
   ) {
     self.insert_sexp(Sexp::List(vec![]));
-    self.opening_stack.push(Opening {
-      char_index,
-      is_prefix: false,
-      closer: Some(closer),
-    });
+    self
+      .opening_stack
+      .push((char_index, Opening::List(opener, closer)));
     match tag.clone() {
       Some(delimiter_tag) => self.insert_token(delimiter_tag),
       None => (),
@@ -130,7 +125,10 @@ impl ParserState {
   pub fn close_list(&mut self) -> Option<&[char]> {
     self.close_prefixes();
     let closer = match self.opening_stack.pop() {
-      Some(opening) => opening.closer,
+      Some(index_opening_pair) => match index_opening_pair.1 {
+        Opening::List(_, closer) => Some(closer),
+        Opening::Prefix => unreachable!(),
+      },
       None => None,
     };
     self.close_prefixes();
@@ -140,19 +138,21 @@ impl ParserState {
     self
       .opening_stack
       .iter()
-      .find(|opening| !opening.is_prefix)
+      .find(|index_opening_pair| match index_opening_pair.1 {
+        Opening::Prefix => false,
+        Opening::List(_, _) => true,
+      })
       .is_some()
   }
-  pub fn expected_closer(&mut self) -> Option<&[char]> {
-    match self
+  pub fn get_open_list(&mut self) -> Option<(&[char], &[char])> {
+    self
       .opening_stack
       .iter()
       .rev()
-      .find(|opening| !opening.is_prefix)
-    {
-      None => None,
-      Some(opening) => opening.closer,
-    }
+      .find_map(|index_opening_pair| match index_opening_pair.1 {
+        Opening::Prefix => None,
+        Opening::List(opener, closer) => Some((opener, closer)),
+      })
   }
 }
 
@@ -193,19 +193,28 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     let matched_closer = delimiters
       .iter()
       .find(|(_, closer, _)| chars_match(closer, &chars[char_index..]));
-    if matched_closer.is_some() && !parser_state.has_open_list() {
-      return Err(QuootParseError::UnmatchedCloser("TODO".to_string()));
-    }
-    let expected_closer = parser_state.expected_closer();
-    let was_expected_closer_matched = match expected_closer {
-      Some(closer) => chars_match(closer, &chars[char_index..]),
+    let open_list = parser_state.get_open_list();
+    let was_expected_closer_matched = match open_list {
+      Some((_, closer)) => chars_match(closer, &chars[char_index..]),
       None => false,
     };
-    if !was_expected_closer_matched && matched_closer.is_some() {
-      return Err(QuootParseError::MismatchedCloser(
-        "TODO".to_string(),
-        "TODO".to_string(),
-      ));
+    match matched_closer {
+      None => (),
+      Some(closer) => match open_list {
+        None => {
+          return Err(QuootParseError::UnmatchedCloser(
+            closer.1.iter().collect(),
+          ))
+        }
+        Some((opener, _)) => {
+          if !was_expected_closer_matched {
+            return Err(QuootParseError::MismatchedCloser(
+              opener.iter().collect(),
+              closer.1.iter().collect(),
+            ));
+          }
+        }
+      },
     }
     let matched_opening = delimiters
       .iter()
@@ -267,7 +276,12 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         Some(delimiter) => {
           // If this is an opener, add a list, with the tag of the delimiter
           // pair (if it has one) as the first element of the list, to the AST.
-          parser_state.open_list(char_index, &delimiter.2, delimiter.1);
+          parser_state.open_list(
+            char_index,
+            delimiter.0,
+            delimiter.1,
+            &delimiter.2,
+          );
           delimiter.0.len()
         }
         None => {
@@ -293,9 +307,9 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     }
   }
   // Throw an error if there are any open lists at the end of the string.
-  match parser_state.close_list() {
-    Some(closer) => {
-      return Err(QuootParseError::UnclosedOpener("TODO".to_string()))
+  match parser_state.get_open_list() {
+    Some((opener, _)) => {
+      return Err(QuootParseError::UnclosedOpener(opener.iter().collect()))
     }
     None => (),
   }

@@ -4,6 +4,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming DSL construct
 
 ## to do
 ### high priority
+* tests for interpreter
 * introduction of custom delimiters with `(#delimit <opener> <closer> <tag> ...)`, and custom prefix operators with `(#prefix <prefix> <tag>)` 
 
   * Wait... I don't think this can be handled by the parser, because it wouldn't work well with macros
