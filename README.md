@@ -1,6 +1,6 @@
-# Untitled
+# Quoot
 
-WIP clojure-ish lisp, with an emphasis on flexible metaprogramming DSL construction
+WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL construction
 
 ## to do
 ### high priority
