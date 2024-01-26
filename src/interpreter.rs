@@ -6,6 +6,7 @@ use std::fmt;
 use std::io;
 use std::io::Write;
 
+#[derive(Clone)]
 pub enum QuootValue {
   List(Vec<QuootValue>),
   Int(i64),
@@ -68,9 +69,15 @@ impl fmt::Display for QuootValue {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug)]
+pub enum QuootEvalError {
+  Parse(QuootParseError),
+  UnboundSymbolError(String),
+}
+
+#[derive(Default, Clone)]
 struct Env {
-  entries: HashMap<String, QuootValue>,
+  entries: HashMap<String, &'static QuootValue>,
 }
 impl Env {
   pub fn merge(self, other_env: Env) -> Env {
@@ -78,11 +85,43 @@ impl Env {
       entries: self.entries.into_iter().chain(other_env.entries).collect(),
     }
   }
+  pub fn get(self, name: &str) -> Option<&QuootValue> {
+    self.entries.get(name).map(|e| e.to_owned())
+  }
 }
 
 #[derive(Default)]
-pub struct InterpreterState {
+struct Interpreter {
   env: Env,
+}
+
+impl Interpreter {
+  pub fn get_binding(
+    &self,
+    name: String,
+  ) -> Result<QuootValue, QuootEvalError> {
+    Err(QuootEvalError::UnboundSymbolError(name))
+    /*match self.env.get(&name) {
+      Some(value) => Ok(value.to_owned()),
+      None => Err(QuootEvalError::UnboundSymbolError(name)),
+    }*/
+  }
+  pub fn eval(&mut self, form: &str) -> Result<QuootValue, QuootEvalError> {
+    match parse(form) {
+      Err(parse_error) => Err(QuootEvalError::Parse(parse_error)),
+      Ok(sexp) => {
+        let parse_value = QuootValue::from_sexp(&sexp);
+        Ok(parse_value)
+        /*match parse_value {
+          QuootValue::List(_) => todo!(),
+          QuootValue::Int(x) => Ok(QuootValue::Int(x)),
+          QuootValue::Float(x) => Ok(QuootValue::Float(x)),
+          QuootValue::String(str) => Ok(QuootValue::String(str)),
+          QuootValue::Symbol(name) => interpreter.get_binding(name),
+        }*/
+      }
+    }
+  }
 }
 
 fn print_prompt() {
@@ -90,16 +129,9 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn eval(
-  form: &str,
-  state: &mut InterpreterState,
-) -> Result<QuootValue, QuootParseError> {
-  Ok(QuootValue::from_sexp(&parse(form)?))
-}
-
 pub fn repl() {
   println!("\nQuoot repl started :D\n");
-  let state = &mut InterpreterState::default();
+  let interpreter = &mut Interpreter::default();
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
@@ -109,7 +141,7 @@ pub fn repl() {
       println!("\nQuoot repl stopped. bye!!\n");
       break;
     }
-    match eval(trimmed_input, state) {
+    match interpreter.eval(trimmed_input) {
       Err(e) => println!("{:?}", e),
       Ok(value) => {
         println!("{:?}", value.to_string())
