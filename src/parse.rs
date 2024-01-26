@@ -83,16 +83,13 @@ impl ParserState {
       .push(Sexp::List(top_expression));
   }
   pub fn close_prefixes(&mut self) {
-    loop {
-      match self.peek_opening() {
-        None => break,
-        Some(next_opening) => match next_opening {
-          Opening::Prefix => {
-            self.close_expression();
-            self.opening_stack.pop();
-          }
-          Opening::List(_, _) => break,
-        },
+    while let Some(next_opening) = self.peek_opening() {
+      match next_opening {
+        Opening::Prefix => {
+          self.close_expression();
+          self.opening_stack.pop();
+        }
+        Opening::List(_, _) => break,
       }
     }
   }
