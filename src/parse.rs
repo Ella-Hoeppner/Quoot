@@ -37,20 +37,6 @@ impl fmt::Display for Sexp {
   }
 }
 
-fn sexp_insert(sexp: &mut Sexp, value: Sexp, depth: usize) {
-  match sexp {
-    Sexp::Leaf(_) => panic!("trying to insert into a leaf"),
-    Sexp::List(values) => {
-      if depth == 0 {
-        values.push(value)
-      } else {
-        let index = values.len() - 1;
-        sexp_insert(&mut values[index], value, depth - 1)
-      }
-    }
-  }
-}
-
 pub fn chars_match(pattern: &[char], chars: &[char]) -> bool {
   chars.len() >= pattern.len()
     && match (0..pattern.len())
@@ -66,32 +52,35 @@ enum Opening {
   List(&'static [char], &'static [char]),
 }
 struct ParserState {
-  root: Sexp,
+  expression_stack: Vec<Vec<Sexp>>,
   opening_stack: Vec<(usize, Opening)>,
 }
 impl ParserState {
   pub fn new() -> ParserState {
     ParserState {
-      root: Sexp::List(vec![]),
+      expression_stack: vec![vec![]],
       opening_stack: vec![],
     }
   }
-  fn insert_sexp(&mut self, sexp: Sexp) {
-    sexp_insert(&mut self.root, sexp, self.opening_stack.len());
-  }
   fn peek_opening(&mut self) -> Option<&Opening> {
     match self.opening_stack.last() {
-      Some(index_opening_pair) => Some(&index_opening_pair.1),
+      Some((_, opening)) => Some(&opening),
       None => None,
     }
   }
   pub fn insert_token(&mut self, token: String) {
-    self.insert_sexp(Sexp::Leaf(token));
+    self.expression_stack[self.opening_stack.len()].push(Sexp::Leaf(token));
   }
   pub fn open_prefix(&mut self, char_index: usize, tag: &String) {
-    self.insert_sexp(Sexp::List(vec![]));
+    self.expression_stack.push(vec![]);
     self.opening_stack.push((char_index, Opening::Prefix));
     self.insert_token(tag.clone());
+  }
+  pub fn close_expression(&mut self) {
+    let top_expression = self.expression_stack.pop().unwrap();
+    let expression_count = self.expression_stack.len();
+    self.expression_stack[expression_count - 1]
+      .push(Sexp::List(top_expression));
   }
   pub fn close_prefixes(&mut self) {
     loop {
@@ -99,6 +88,7 @@ impl ParserState {
         None => break,
         Some(next_opening) => match next_opening {
           Opening::Prefix => {
+            self.close_expression();
             self.opening_stack.pop();
           }
           Opening::List(_, _) => break,
@@ -113,7 +103,7 @@ impl ParserState {
     closer: &'static [char],
     tag: &Option<String>,
   ) {
-    self.insert_sexp(Sexp::List(vec![]));
+    self.expression_stack.push(vec![]);
     self
       .opening_stack
       .push((char_index, Opening::List(opener, closer)));
@@ -124,6 +114,7 @@ impl ParserState {
   }
   pub fn close_list(&mut self) -> Option<&[char]> {
     self.close_prefixes();
+    self.close_expression();
     let closer = match self.opening_stack.pop() {
       Some(index_opening_pair) => match index_opening_pair.1 {
         Opening::List(_, closer) => Some(closer),
@@ -134,16 +125,6 @@ impl ParserState {
     self.close_prefixes();
     closer
   }
-  pub fn has_open_list(&mut self) -> bool {
-    self
-      .opening_stack
-      .iter()
-      .find(|index_opening_pair| match index_opening_pair.1 {
-        Opening::Prefix => false,
-        Opening::List(_, _) => true,
-      })
-      .is_some()
-  }
   pub fn get_open_list(&mut self) -> Option<(&[char], &[char])> {
     self
       .opening_stack
@@ -153,6 +134,9 @@ impl ParserState {
         Opening::Prefix => None,
         Opening::List(opener, closer) => Some((opener, closer)),
       })
+  }
+  pub fn finish(&mut self) -> Sexp {
+    Sexp::List(self.expression_stack.pop().unwrap())
   }
 }
 
@@ -237,8 +221,8 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
         .insert_token(chars[consumed_index..char_index].iter().collect());
       if whitespace {
         // If this character is whitespace, indicating that this was the end of
-        // a terminal token rather than a closing delimiter, check if innermost
-        // opener is a prefix (as opposed to a delimiter), and if so close it.
+        // a terminal token rather than a closing delimiter, close any open
+        // prefixes.
         parser_state.close_prefixes();
       }
     };
@@ -321,7 +305,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     parser_state
       .insert_token(chars[consumed_index..chars.len()].iter().collect());
   }
-  return Ok(parser_state.root.to_owned());
+  return Ok(parser_state.finish());
 }
 
 pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
