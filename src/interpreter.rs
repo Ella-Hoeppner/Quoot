@@ -77,16 +77,14 @@ pub enum QuootEvalError {
 
 #[derive(Default, Clone)]
 struct Env {
-  entries: HashMap<String, &'static QuootValue>,
+  bindings: HashMap<String, QuootValue>,
 }
 impl Env {
-  pub fn merge(self, other_env: Env) -> Env {
-    Env {
-      entries: self.entries.into_iter().chain(other_env.entries).collect(),
-    }
+  pub fn bind(&mut self, name: &str, value: QuootValue) {
+    self.bindings.insert(name.to_owned(), value);
   }
-  pub fn get(self, name: &str) -> Option<&QuootValue> {
-    self.entries.get(name).map(|e| e.to_owned())
+  pub fn get(&self, name: &str) -> Option<&QuootValue> {
+    self.bindings.get(name).map(|e| e)
   }
 }
 
@@ -96,30 +94,28 @@ struct Interpreter {
 }
 
 impl Interpreter {
+  pub fn add_binding(&mut self, name: String, value: QuootValue) {
+    self.env.bind(&name, value)
+  }
   pub fn get_binding(
     &self,
     name: String,
   ) -> Result<QuootValue, QuootEvalError> {
-    Err(QuootEvalError::UnboundSymbolError(name))
-    /*match self.env.get(&name) {
+    match self.env.get(&name) {
       Some(value) => Ok(value.to_owned()),
       None => Err(QuootEvalError::UnboundSymbolError(name)),
-    }*/
+    }
   }
   pub fn eval(&mut self, form: &str) -> Result<QuootValue, QuootEvalError> {
     match parse(form) {
       Err(parse_error) => Err(QuootEvalError::Parse(parse_error)),
-      Ok(sexp) => {
-        let parse_value = QuootValue::from_sexp(&sexp);
-        Ok(parse_value)
-        /*match parse_value {
-          QuootValue::List(_) => todo!(),
-          QuootValue::Int(x) => Ok(QuootValue::Int(x)),
-          QuootValue::Float(x) => Ok(QuootValue::Float(x)),
-          QuootValue::String(str) => Ok(QuootValue::String(str)),
-          QuootValue::Symbol(name) => interpreter.get_binding(name),
-        }*/
-      }
+      Ok(sexp) => match QuootValue::from_sexp(&sexp) {
+        QuootValue::List(_) => todo!(),
+        QuootValue::Int(x) => Ok(QuootValue::Int(x)),
+        QuootValue::Float(x) => Ok(QuootValue::Float(x)),
+        QuootValue::String(str) => Ok(QuootValue::String(str)),
+        QuootValue::Symbol(name) => self.get_binding(name),
+      },
     }
   }
 }
@@ -132,11 +128,12 @@ fn print_prompt() {
 pub fn repl() {
   println!("\nQuoot repl started :D\n");
   let interpreter = &mut Interpreter::default();
+  interpreter.add_binding("x".to_owned(), QuootValue::Int(30));
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
   while stdin.read_line(&mut input_buffer).is_ok() {
-    let trimmed_input = input_buffer.trim_end();
+    let trimmed_input = input_buffer.trim_start().trim_end();
     if trimmed_input.eq("#EXIT") {
       println!("\nQuoot repl stopped. bye!!\n");
       break;
@@ -144,7 +141,7 @@ pub fn repl() {
     match interpreter.eval(trimmed_input) {
       Err(e) => println!("{:?}", e),
       Ok(value) => {
-        println!("{:?}", value.to_string())
+        println!("{}", value.to_string())
       }
     }
     input_buffer.clear();

@@ -133,7 +133,13 @@ impl ParserState {
       })
   }
   pub fn finish(&mut self) -> Sexp {
-    Sexp::List(self.expression_stack.pop().unwrap())
+    self
+      .expression_stack
+      .pop()
+      .unwrap()
+      .first()
+      .unwrap()
+      .clone()
   }
 }
 
@@ -155,6 +161,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   ];
 
   let parser_state: &mut ParserState = &mut ParserState::new();
+  let mut expression_opened: bool = false;
   let mut char_index: usize = 0;
   let mut consumed_index: usize = 0;
 
@@ -223,6 +230,9 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
 
         parser_state.close_prefixes();
       }
+      if !expression_opened {
+        return Ok(parser_state.finish());
+      }
     };
     if string_opener {
       // If this character is a ", indicating the start of a string, consume
@@ -243,11 +253,15 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
           break;
         }
       }
+      if !expression_opened {
+        return Ok(parser_state.finish());
+      }
     }
     // Handle the case where this character is the start of a prefix, opener,
     // or closer, and adjust the character index accordingly.
     char_index += match prefix_index {
       Some(i) => {
+        expression_opened = true;
         // If this is a prefix, add a list, with the tag of the prefix as the
         // first element of the list, to the AST.
         let prefix = &prefixes[i];
@@ -256,6 +270,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       }
       None => match matched_opening {
         Some(delimiter) => {
+          expression_opened = true;
           // If this is an opener, add a list, with the tag of the delimiter
           // pair (if it has one) as the first element of the list, to the AST.
           parser_state.open_list(
@@ -287,12 +302,15 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
     {
       consumed_index = char_index;
     }
+    if expression_opened && parser_state.opening_stack.len() == 0 {
+      return Ok(parser_state.finish());
+    }
   }
 
-  // If consumption isn't caught up to the end of the string, that means the
+  // If the end of the string was reached and consumption isn't caught up, the
   // string must end with a token not followed by whitespace, so add one
   // final leaf to the AST.
-  if consumed_index < char_index {
+  if char_index >= chars.len() && consumed_index < char_index {
     parser_state
       .insert_token(chars[consumed_index..chars.len()].iter().collect());
   }
@@ -365,10 +383,9 @@ fn test_parse() {
   ]
   .into_iter()
   .for_each(|(str, sexp)| {
-    let wrapped_sexp = Sexp::List(vec![sexp]);
     match parse(str) {
       Ok(parsed_sexp) => assert_eq!(
-        wrapped_sexp, parsed_sexp,
+        sexp, parsed_sexp,
         "String {:?} was not parsed as expected.",
         str
       ),

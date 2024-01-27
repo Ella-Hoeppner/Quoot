@@ -3,13 +3,11 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 
 ## to do
 ### high priority
-* make parser stop after reading one full form, return just that one form rather than a list of all parsed forms
-  * should also probably return the index stopped at
-* add value lookups from environment to the interpreter
-  * this isn't working yet, need to figure out how to pull values from the hashmap without cloning the entire thing every time
-    * apparently it's something with Rc and RefCell?
-* Use hashbrown crate to have much faster hashmaps
-* consider using &str in place of &[char] in parser?
+* ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
+  * probably don't need to start the expression_stack with an empty vector?
+* use &str in place of &[char] in parser
+  * should be doable with char_indices
+* Use rustyline crate for a nicer repl
 * add function application to the interpreter
   * need to have a function type in QuootValue
 * figure out how to handle custom delimiter/prefix introduction
