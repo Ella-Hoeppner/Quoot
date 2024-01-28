@@ -8,6 +8,7 @@ use std::io::Write;
 
 #[derive(Clone)]
 pub enum QuootValue {
+  Nil,
   List(Vec<QuootValue>),
   Int(i64),
   Float(f64),
@@ -38,7 +39,13 @@ impl QuootValue {
           .map(|sub_sexp| QuootValue::from_sexp(sub_sexp))
           .collect(),
       ),
-      Sexp::Leaf(token) => QuootValue::from_token(token),
+      Sexp::Leaf(token) => {
+        if token == "nil" {
+          QuootValue::Nil
+        } else {
+          QuootValue::from_token(token)
+        }
+      }
     }
   }
 }
@@ -64,6 +71,7 @@ impl fmt::Display for QuootValue {
         }
         fmt.write_str(")")?;
       }
+      QuootValue::Nil => fmt.write_str("nil")?,
     }
     Ok(())
   }
@@ -109,13 +117,14 @@ impl Interpreter {
   pub fn eval(&mut self, form: &str) -> Result<QuootValue, QuootEvalError> {
     match parse(form) {
       Err(parse_error) => Err(QuootEvalError::Parse(parse_error)),
-      Ok(sexp) => match QuootValue::from_sexp(&sexp) {
-        QuootValue::List(_) => todo!(),
-        QuootValue::Int(x) => Ok(QuootValue::Int(x)),
-        QuootValue::Float(x) => Ok(QuootValue::Float(x)),
-        QuootValue::String(str) => Ok(QuootValue::String(str)),
-        QuootValue::Symbol(name) => self.get_binding(name),
-      },
+      Ok(sexp) => {
+        let value = QuootValue::from_sexp(&sexp);
+        match value {
+          QuootValue::Symbol(name) => self.get_binding(name),
+          QuootValue::List(_) => todo!(),
+          _ => Ok(value),
+        }
+      }
     }
   }
 }
