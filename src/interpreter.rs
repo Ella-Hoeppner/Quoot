@@ -14,6 +14,7 @@ pub enum QuootValue {
   Float(f64),
   String(String),
   Symbol(String),
+  Fn(&'static dyn Fn(Vec<QuootValue>) -> QuootValue),
 }
 
 impl QuootValue {
@@ -72,6 +73,7 @@ impl fmt::Display for QuootValue {
         fmt.write_str(")")?;
       }
       QuootValue::Nil => fmt.write_str("nil")?,
+      QuootValue::Fn(_) => fmt.write_str("<fn>")?,
     }
     Ok(())
   }
@@ -81,6 +83,7 @@ impl fmt::Display for QuootValue {
 pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
+  AppliedUnapplicableError,
 }
 
 #[derive(Default, Clone)]
@@ -114,17 +117,34 @@ impl Interpreter {
       None => Err(QuootEvalError::UnboundSymbolError(name)),
     }
   }
-  pub fn eval(&mut self, form: &str) -> Result<QuootValue, QuootEvalError> {
-    match parse(form) {
-      Err(parse_error) => Err(QuootEvalError::Parse(parse_error)),
-      Ok(sexp) => {
-        let value = QuootValue::from_sexp(&sexp);
-        match value {
-          QuootValue::Symbol(name) => self.get_binding(name),
-          QuootValue::List(_) => todo!(),
-          _ => Ok(value),
+  pub fn apply(
+    &self,
+    f: &'static dyn Fn(Vec<QuootValue>) -> QuootValue,
+    args: Vec<QuootValue>,
+  ) -> Result<QuootValue, QuootEvalError> {
+    Ok(f(args))
+  }
+  pub fn eval(
+    &mut self,
+    value: QuootValue,
+  ) -> Result<QuootValue, QuootEvalError> {
+    match value {
+      QuootValue::Symbol(name) => self.get_binding(name),
+      QuootValue::List(values) => {
+        let evaluated_values = values
+          .iter()
+          .map(|v| self.eval(v.to_owned()))
+          .into_iter()
+          .collect::<Result<Vec<QuootValue>, QuootEvalError>>()?;
+        match evaluated_values.first() {
+          None => Ok(QuootValue::List(vec![])),
+          Some(function) => match function {
+            QuootValue::Fn(f) => self.apply(f.clone(), vec![]),
+            _ => todo!(),
+          },
         }
       }
+      other => Ok(other),
     }
   }
 }
@@ -134,10 +154,15 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
+fn quoot_add(values: Vec<QuootValue>) -> QuootValue {
+  QuootValue::Float(5.0)
+}
+
 pub fn repl() {
   println!("\nQuoot repl started :D\n");
   let interpreter = &mut Interpreter::default();
   interpreter.add_binding("x".to_owned(), QuootValue::Int(30));
+  interpreter.add_binding("+".to_owned(), QuootValue::Fn(&quoot_add));
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
@@ -147,11 +172,16 @@ pub fn repl() {
       println!("\nQuoot repl stopped. bye!!\n");
       break;
     }
-    match interpreter.eval(trimmed_input) {
-      Err(e) => println!("{:?}", e),
-      Ok(value) => {
-        println!("{}", value.to_string())
+    match parse(trimmed_input) {
+      Err(parse_error) => {
+        println!("{:?}", QuootEvalError::Parse(parse_error))
       }
+      Ok(form) => match interpreter.eval(QuootValue::from_sexp(&form)) {
+        Err(e) => println!("{:?}", e),
+        Ok(value) => {
+          println!("{}", value.to_string())
+        }
+      },
     }
     input_buffer.clear();
     print_prompt();

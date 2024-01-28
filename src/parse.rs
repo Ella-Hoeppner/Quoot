@@ -145,7 +145,7 @@ impl ParserState {
 
 pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   if chars.is_empty() {
-    return Ok(Sexp::List(vec![]));
+    return Ok(Sexp::Leaf("nil".to_string()));
   }
 
   let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
