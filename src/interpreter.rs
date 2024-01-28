@@ -1,6 +1,7 @@
 use crate::parse::parse;
 use crate::parse::QuootParseError;
 use crate::parse::Sexp;
+use rpds::List;
 use std::collections::HashMap;
 use std::fmt;
 use std::io;
@@ -15,7 +16,7 @@ pub enum Num {
 #[derive(Clone)]
 pub enum QuootValue {
   Nil,
-  List(Vec<QuootValue>),
+  List(List<QuootValue>),
   Num(Num),
   String(String),
   Symbol(String),
@@ -40,10 +41,9 @@ impl QuootValue {
   pub fn from_sexp(sexp: &Sexp) -> QuootValue {
     match sexp {
       Sexp::List(sub_sexps) => QuootValue::List(
-        sub_sexps
-          .iter()
-          .map(|sub_sexp| QuootValue::from_sexp(sub_sexp))
-          .collect(),
+        sub_sexps.iter().rev().fold(List::new(), |list, sub_sexp| {
+          list.push_front(QuootValue::from_sexp(sub_sexp))
+        }),
       ),
       Sexp::Leaf(token) => {
         if token == "nil" {
@@ -163,7 +163,7 @@ impl Interpreter {
           .into_iter()
           .collect::<Result<Vec<QuootValue>, QuootEvalError>>()?;
         match evaluated_values.first() {
-          None => Ok(QuootValue::List(vec![])),
+          None => Ok(QuootValue::List(List::new())),
           Some(function) => match function {
             QuootValue::Fn(f) => {
               self.apply(f.clone(), evaluated_values[1..].iter().collect())

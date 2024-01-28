@@ -3,6 +3,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 
 ## to do
 ### high priority
+* Make lists use rpds persistent list rather than Vec
 * create a default environment
   * +, -, *, /, mod, quot
   * list
@@ -15,11 +16,12 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
   * probably don't need to start the expression_stack with an empty vector?
 * use &str in place of &[char] in parser
   * should be doable with char_indices
-* Make lists use rpds persistent list rather than Vec
 * add vectors, hashmaps, and sets
   * pull in the rpds crate for this
   * add constructors fns for the corresponding names to the default environment
   * add `nth` and `get` to the default environment
+* lambdas
+* quoting
 
 ### low priority
 * Use rustyline crate for a nicer repl
@@ -40,3 +42,8 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
   * Probably need some special syntax to make this work
     * What if you always have to declare the existence of a delimiter/prefix on it's own top-level form, then prefix other top-level(?) forms that use that use that delimiter/prefix with some indicator (specific to that edlimiter/prefix)
       * As long as the parser stopped between each top-level form, and the Interpreter kept track of the globally declared delimiters and has a step to update that list between each top-level form, I think this could work
+  * The best approach I can think of right now is:
+    * Have all delimiters/prefixes be declared as top-level forms.
+    * Allow macros to somehow be tagged with which delimiters/prefixes apply to the forms enclosed inside them
+      * At the reader stage, when one of these tagged macros is encountered, apply those delimiters/prefixes until that macros closes
+        * This will happen at the reader stage so it will be before any kind of macroexpansion, but I think that's fine. Just means that the reader will need to be aware of the declared macros, which seems totally doable.
