@@ -4,7 +4,6 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 ## to do
 ### high priority
 * create a default environment
-  * +, -, *, /, mod, quot
   * list
   * cons, concat, count
   * apply

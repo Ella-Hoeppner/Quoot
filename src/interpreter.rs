@@ -68,6 +68,19 @@ impl QuootValue {
     }
     .to_string()
   }
+  pub fn num(&self, error_prefix: &str) -> Result<Num, QuootEvalError> {
+    match self {
+      QuootValue::Nil => Ok(Num::Int(0)),
+      QuootValue::Num(num) => Ok(num.clone()),
+      _ => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "{}: can't get num from type {}",
+          error_prefix,
+          self.type_string()
+        )))
+      }
+    }
+  }
 }
 
 impl fmt::Display for QuootValue {
@@ -186,54 +199,148 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn quoot_add(values: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
-  let nums = values
-    .iter()
-    .map(|v| match v {
-      QuootValue::Nil => Ok(Num::Int(0)),
-      QuootValue::Num(num) => Ok(num.clone()),
-      _ => Err(QuootEvalError::FunctionError(format!(
-        "+: can't add type <{}>",
-        v.type_string()
-      ))),
-    })
-    .into_iter()
-    .collect::<Result<Vec<Num>, QuootEvalError>>()?;
-  Ok(QuootValue::Num(nums.iter().fold(
-    Num::Int(0),
-    |a, b| match (a, b) {
-      (Num::Int(a), Num::Int(b)) => Num::Int(a + b),
-      (Num::Float(a), Num::Float(b)) => Num::Float(a + b),
-      (Num::Int(i_a), Num::Float(f_b)) => Num::Float((i_a as f64) + f_b),
-      (Num::Float(f_a), Num::Int(i_b)) => Num::Float(f_a + (*i_b as f64)),
-    },
-  )))
+fn quoot_value_sum(
+  values: List<QuootValue>,
+  error_message_name: &str,
+) -> Result<Num, QuootEvalError> {
+  Ok(
+    values
+      .iter()
+      .map(|v| v.num(error_message_name))
+      .into_iter()
+      .collect::<Result<Vec<Num>, QuootEvalError>>()?
+      .iter()
+      .fold(Num::Int(0), |a, b| match (a, b) {
+        (Num::Int(a), Num::Int(b)) => Num::Int(a + b),
+        (Num::Float(a), Num::Float(b)) => Num::Float(a + b),
+        (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) + b),
+        (Num::Float(a), Num::Int(b)) => Num::Float(a + (*b as f64)),
+      }),
+  )
+}
+
+fn quoot_value_product(
+  values: List<QuootValue>,
+  error_message_name: &str,
+) -> Result<Num, QuootEvalError> {
+  Ok(
+    values
+      .iter()
+      .map(|v| v.num(error_message_name))
+      .into_iter()
+      .collect::<Result<Vec<Num>, QuootEvalError>>()?
+      .iter()
+      .fold(Num::Int(1), |a, b| match (a, b) {
+        (Num::Int(a), Num::Int(b)) => Num::Int(a * b),
+        (Num::Float(a), Num::Float(b)) => Num::Float(a * b),
+        (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) * b),
+        (Num::Float(a), Num::Int(b)) => Num::Float(a * (*b as f64)),
+      }),
+  )
+}
+
+fn quoot_add(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  Ok(QuootValue::Num(quoot_value_sum(args, "+")?))
 }
 
 fn quoot_multiply(
-  values: List<QuootValue>,
+  args: List<QuootValue>,
 ) -> Result<QuootValue, QuootEvalError> {
-  let nums = values
-    .iter()
-    .map(|v| match v {
-      QuootValue::Nil => Ok(Num::Int(0)),
-      QuootValue::Num(num) => Ok(num.clone()),
-      _ => Err(QuootEvalError::FunctionError(format!(
-        "*: can't multiply type <{}>",
-        v.type_string()
-      ))),
-    })
-    .into_iter()
-    .collect::<Result<Vec<Num>, QuootEvalError>>()?;
-  Ok(QuootValue::Num(nums.iter().fold(
-    Num::Int(1),
-    |a, b| match (a, b) {
-      (Num::Int(a), Num::Int(b)) => Num::Int(a * b),
-      (Num::Float(a), Num::Float(b)) => Num::Float(a * b),
-      (Num::Int(i_a), Num::Float(f_b)) => Num::Float((i_a as f64) * f_b),
-      (Num::Float(f_a), Num::Int(i_b)) => Num::Float(f_a * (*i_b as f64)),
-    },
-  )))
+  Ok(QuootValue::Num(quoot_value_product(args, "*")?))
+}
+
+fn quoot_subtract(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.first() {
+    None => Err(QuootEvalError::FunctionError(
+      "-: must supply at least one argument".to_owned(),
+    )),
+    Some(value) => {
+      let first_num = value.num("-")?;
+      match args.drop_first() {
+        None => unreachable!(),
+        Some(other_values) => Ok(QuootValue::Num(if other_values.len() == 0 {
+          match first_num {
+            Num::Int(i) => Num::Int(-i),
+            Num::Float(f) => Num::Float(-f),
+          }
+        } else {
+          match (first_num, quoot_value_sum(other_values, "-")?) {
+            (Num::Int(a), Num::Int(b)) => Num::Int(a - b),
+            (Num::Float(a), Num::Float(b)) => Num::Float(a - b),
+            (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) - b),
+            (Num::Float(a), Num::Int(b)) => Num::Float(a - (b as f64)),
+          }
+        })),
+      }
+    }
+  }
+}
+
+fn quoot_divide(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  match args.first() {
+    None => Err(QuootEvalError::FunctionError(
+      "/: must supply at least one argument".to_owned(),
+    )),
+    Some(value) => {
+      let first_num = value.num("/")?;
+      match args.drop_first() {
+        None => unreachable!(),
+        Some(other_values) => Ok(QuootValue::Num(if other_values.len() == 0 {
+          match first_num {
+            Num::Int(i) => Num::Float(1.0 / (i as f64)),
+            Num::Float(f) => Num::Float(1.0 / f),
+          }
+        } else {
+          match (first_num, quoot_value_product(other_values, "/")?) {
+            (Num::Int(a), Num::Int(b)) => Num::Float((a as f64) / (b as f64)),
+            (Num::Float(a), Num::Float(b)) => Num::Float(a / b),
+            (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) / b),
+            (Num::Float(a), Num::Int(b)) => Num::Float(a / (b as f64)),
+          }
+        })),
+      }
+    }
+  }
+}
+
+fn quoot_modulo(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let dividend = args.first().unwrap().num("mod")?;
+    let divisor = args.drop_first().unwrap().first().unwrap().num("mod")?;
+    Ok(QuootValue::Num(match (dividend, divisor) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a % b),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a % b),
+      (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) % b),
+      (Num::Float(a), Num::Int(b)) => Num::Float(a % (b as f64)),
+    }))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "mod: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+fn quoot_quotient(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let dividend = args.first().unwrap().num("quot")?;
+    let divisor = args.drop_first().unwrap().first().unwrap().num("quot")?;
+    Ok(QuootValue::Num(match (dividend, divisor) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a / b),
+      (Num::Float(a), Num::Float(b)) => Num::Int((a / b) as i64),
+      (Num::Int(a), Num::Float(b)) => Num::Int(((a as f64) / b) as i64),
+      (Num::Float(a), Num::Int(b)) => Num::Int((a / (b as f64)) as i64),
+    }))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "quot: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
 }
 
 pub fn repl() {
@@ -244,7 +351,11 @@ pub fn repl() {
     QuootValue::Num(Num::Float(6.283185307179586)),
   );
   interpreter.add_binding("+".to_owned(), QuootValue::Fn(&quoot_add));
+  interpreter.add_binding("-".to_owned(), QuootValue::Fn(&quoot_subtract));
   interpreter.add_binding("*".to_owned(), QuootValue::Fn(&quoot_multiply));
+  interpreter.add_binding("/".to_owned(), QuootValue::Fn(&quoot_divide));
+  interpreter.add_binding("mod".to_owned(), QuootValue::Fn(&quoot_modulo));
+  interpreter.add_binding("quot".to_owned(), QuootValue::Fn(&quoot_quotient));
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
