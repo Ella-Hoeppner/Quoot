@@ -7,11 +7,16 @@ use std::io;
 use std::io::Write;
 
 #[derive(Clone)]
+pub enum Num {
+  Int(i64),
+  Float(f64),
+}
+
+#[derive(Clone)]
 pub enum QuootValue {
   Nil,
   List(Vec<QuootValue>),
-  Int(i64),
-  Float(f64),
+  Num(Num),
   String(String),
   Symbol(String),
   Fn(&'static dyn Fn(Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError>),
@@ -24,9 +29,9 @@ impl QuootValue {
       return QuootValue::String(chars[1..chars.len() - 1].iter().collect());
     }
     match token.parse::<i64>() {
-      Ok(int) => return QuootValue::Int(int),
+      Ok(int) => return QuootValue::Num(Num::Int(int)),
       Err(_) => match token.parse::<f64>() {
-        Ok(float) => return QuootValue::Float(float),
+        Ok(float) => return QuootValue::Num(Num::Float(float)),
         Err(_) => (),
       },
     }
@@ -52,11 +57,13 @@ impl QuootValue {
   pub fn type_string(&self) -> String {
     match self {
       QuootValue::Nil => "Nil",
-      QuootValue::List(_) => "List",
-      QuootValue::Int(_) => "Integer",
-      QuootValue::Float(_) => "Float",
+      QuootValue::Num(num) => match num {
+        Num::Int(_) => "Integer",
+        Num::Float(_) => "Float",
+      },
       QuootValue::String(_) => "String",
       QuootValue::Symbol(_) => "Symbol",
+      QuootValue::List(_) => "List",
       QuootValue::Fn(_) => "Function",
     }
     .to_string()
@@ -72,8 +79,14 @@ impl fmt::Display for QuootValue {
         fmt.write_str(token)?;
         fmt.write_str("\"")?;
       }
-      QuootValue::Int(int) => fmt.write_str(&int.to_string())?,
-      QuootValue::Float(float) => fmt.write_str(&float.to_string())?,
+      QuootValue::Num(num) => match num {
+        Num::Int(i) => fmt.write_str(&i.to_string()),
+        Num::Float(f) => fmt.write_str(&format!(
+          "{}{}",
+          f,
+          if f.fract() == 0.0 { "." } else { "" }
+        )),
+      }?,
       QuootValue::List(sub_expressions) => {
         fmt.write_str("(")?;
         let mut separator = "";
@@ -170,42 +183,64 @@ fn print_prompt() {
 }
 
 fn quoot_add(values: Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError> {
-  enum Summable {
-    F(f64),
-    I(i64),
-  }
-  let summables = values
+  let nums = values
     .iter()
     .map(|v| match v {
-      QuootValue::Nil => Ok(Summable::I(0)),
-      QuootValue::Int(i) => Ok(Summable::I(*i)),
-      QuootValue::Float(f) => Ok(Summable::F(*f)),
+      QuootValue::Nil => Ok(Num::Int(0)),
+      QuootValue::Num(num) => Ok(num.clone()),
       _ => Err(QuootEvalError::FunctionError(format!(
         "+: can't add type <{}>",
         v.type_string()
       ))),
     })
     .into_iter()
-    .collect::<Result<Vec<Summable>, QuootEvalError>>()?;
-  Ok(
-    match summables.iter().fold(Summable::I(0), |a, b| match (a, b) {
-      (Summable::I(a), Summable::I(b)) => Summable::I(a + b),
-      (Summable::F(a), Summable::F(b)) => Summable::F(a + b),
-      (Summable::I(i_a), Summable::F(f_b)) => Summable::F((i_a as f64) + f_b),
-      (Summable::F(f_a), Summable::I(i_b)) => Summable::F(f_a + (*i_b as f64)),
-    }) {
-      Summable::F(f) => QuootValue::Float(f),
-      Summable::I(i) => QuootValue::Int(i),
+    .collect::<Result<Vec<Num>, QuootEvalError>>()?;
+  Ok(QuootValue::Num(nums.iter().fold(
+    Num::Int(0),
+    |a, b| match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a + b),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a + b),
+      (Num::Int(i_a), Num::Float(f_b)) => Num::Float((i_a as f64) + f_b),
+      (Num::Float(f_a), Num::Int(i_b)) => Num::Float(f_a + (*i_b as f64)),
     },
-  )
+  )))
+}
+
+fn quoot_multiply(
+  values: Vec<&QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  let nums = values
+    .iter()
+    .map(|v| match v {
+      QuootValue::Nil => Ok(Num::Int(0)),
+      QuootValue::Num(num) => Ok(num.clone()),
+      _ => Err(QuootEvalError::FunctionError(format!(
+        "*: can't multiply type <{}>",
+        v.type_string()
+      ))),
+    })
+    .into_iter()
+    .collect::<Result<Vec<Num>, QuootEvalError>>()?;
+  Ok(QuootValue::Num(nums.iter().fold(
+    Num::Int(1),
+    |a, b| match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a * b),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a * b),
+      (Num::Int(i_a), Num::Float(f_b)) => Num::Float((i_a as f64) * f_b),
+      (Num::Float(f_a), Num::Int(i_b)) => Num::Float(f_a * (*i_b as f64)),
+    },
+  )))
 }
 
 pub fn repl() {
   println!("\nQuoot repl started :D\n");
   let interpreter = &mut Interpreter::default();
-  interpreter
-    .add_binding("TAU".to_owned(), QuootValue::Float(6.283185307179586));
+  interpreter.add_binding(
+    "TAU".to_owned(),
+    QuootValue::Num(Num::Float(6.283185307179586)),
+  );
   interpreter.add_binding("+".to_owned(), QuootValue::Fn(&quoot_add));
+  interpreter.add_binding("*".to_owned(), QuootValue::Fn(&quoot_multiply));
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
