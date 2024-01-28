@@ -14,7 +14,7 @@ pub enum QuootValue {
   Float(f64),
   String(String),
   Symbol(String),
-  Fn(&'static dyn Fn(Vec<QuootValue>) -> QuootValue),
+  Fn(&'static dyn Fn(Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError>),
 }
 
 impl QuootValue {
@@ -49,6 +49,18 @@ impl QuootValue {
       }
     }
   }
+  pub fn type_string(&self) -> String {
+    match self {
+      QuootValue::Nil => "Nil",
+      QuootValue::List(_) => "List",
+      QuootValue::Int(_) => "Integer",
+      QuootValue::Float(_) => "Float",
+      QuootValue::String(_) => "String",
+      QuootValue::Symbol(_) => "Symbol",
+      QuootValue::Fn(_) => "Function",
+    }
+    .to_string()
+  }
 }
 
 impl fmt::Display for QuootValue {
@@ -73,7 +85,7 @@ impl fmt::Display for QuootValue {
         fmt.write_str(")")?;
       }
       QuootValue::Nil => fmt.write_str("nil")?,
-      QuootValue::Fn(_) => fmt.write_str("<fn>")?,
+      QuootValue::Fn(_) => fmt.write_str("<Function>")?,
     }
     Ok(())
   }
@@ -84,6 +96,7 @@ pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
   AppliedUnapplicableError,
+  FunctionError(String),
 }
 
 #[derive(Default, Clone)]
@@ -119,10 +132,10 @@ impl Interpreter {
   }
   pub fn apply(
     &self,
-    f: &'static dyn Fn(Vec<QuootValue>) -> QuootValue,
-    args: Vec<QuootValue>,
+    f: &'static dyn Fn(Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError>,
+    args: Vec<&QuootValue>,
   ) -> Result<QuootValue, QuootEvalError> {
-    Ok(f(args))
+    f(args)
   }
   pub fn eval(
     &mut self,
@@ -139,7 +152,9 @@ impl Interpreter {
         match evaluated_values.first() {
           None => Ok(QuootValue::List(vec![])),
           Some(function) => match function {
-            QuootValue::Fn(f) => self.apply(f.clone(), vec![]),
+            QuootValue::Fn(f) => {
+              self.apply(f.clone(), evaluated_values[1..].iter().collect())
+            }
             _ => todo!(),
           },
         }
@@ -154,14 +169,42 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn quoot_add(values: Vec<QuootValue>) -> QuootValue {
-  QuootValue::Float(5.0)
+fn quoot_add(values: Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  enum Summable {
+    F(f64),
+    I(i64),
+  }
+  let summables = values
+    .iter()
+    .map(|v| match v {
+      QuootValue::Nil => Ok(Summable::I(0)),
+      QuootValue::Int(i) => Ok(Summable::I(*i)),
+      QuootValue::Float(f) => Ok(Summable::F(*f)),
+      _ => Err(QuootEvalError::FunctionError(format!(
+        "+: can't add type <{}>",
+        v.type_string()
+      ))),
+    })
+    .into_iter()
+    .collect::<Result<Vec<Summable>, QuootEvalError>>()?;
+  Ok(
+    match summables.iter().fold(Summable::I(0), |a, b| match (a, b) {
+      (Summable::I(a), Summable::I(b)) => Summable::I(a + b),
+      (Summable::F(a), Summable::F(b)) => Summable::F(a + b),
+      (Summable::I(i_a), Summable::F(f_b)) => Summable::F((i_a as f64) + f_b),
+      (Summable::F(f_a), Summable::I(i_b)) => Summable::F(f_a + (*i_b as f64)),
+    }) {
+      Summable::F(f) => QuootValue::Float(f),
+      Summable::I(i) => QuootValue::Int(i),
+    },
+  )
 }
 
 pub fn repl() {
   println!("\nQuoot repl started :D\n");
   let interpreter = &mut Interpreter::default();
-  interpreter.add_binding("x".to_owned(), QuootValue::Int(30));
+  interpreter
+    .add_binding("TAU".to_owned(), QuootValue::Float(6.283185307179586));
   interpreter.add_binding("+".to_owned(), QuootValue::Fn(&quoot_add));
   let mut input_buffer = String::new();
   let stdin = io::stdin();

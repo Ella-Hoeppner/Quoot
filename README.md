@@ -3,14 +3,18 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 
 ## to do
 ### high priority
+* create a default environment
+  * +, -, *, /, mod, quot
+  * list
+  * cons, concat, count
+  * apply
+  * maybe try higher-order functions like map and comp?
+* maybe get rid of Sexp in parser, just have QuootValue?
+  * QuootValue could maybe be in it's own "model.rs" file
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
   * probably don't need to start the expression_stack with an empty vector?
 * use &str in place of &[char] in parser
   * should be doable with char_indices
-* make function application use the rest of the values in the list as args
-* create a default environment
-  * for now can just contain arithmetic stuff
-    * +, -, *, /, mod, quot
 * Make lists use rpds persistent list rather than Vec
 * add vectors, hashmaps, and sets
   * pull in the rpds crate for this
