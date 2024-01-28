@@ -3,7 +3,6 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 
 ## to do
 ### high priority
-* Make lists use rpds persistent list rather than Vec
 * create a default environment
   * +, -, *, /, mod, quot
   * list

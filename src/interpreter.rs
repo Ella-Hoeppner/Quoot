@@ -20,7 +20,7 @@ pub enum QuootValue {
   Num(Num),
   String(String),
   Symbol(String),
-  Fn(&'static dyn Fn(Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError>),
+  Fn(&'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>),
 }
 
 impl QuootValue {
@@ -145,8 +145,8 @@ impl Interpreter {
   }
   pub fn apply(
     &self,
-    f: &'static dyn Fn(Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError>,
-    args: Vec<&QuootValue>,
+    f: &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>,
+    args: List<QuootValue>,
   ) -> Result<QuootValue, QuootEvalError> {
     f(args)
   }
@@ -157,17 +157,21 @@ impl Interpreter {
     match value {
       QuootValue::Symbol(name) => self.get_binding(name),
       QuootValue::List(values) => {
-        let evaluated_values = values
+        let evaluated_values: List<QuootValue> = values
           .iter()
           .map(|v| self.eval(v.to_owned()))
           .into_iter()
-          .collect::<Result<Vec<QuootValue>, QuootEvalError>>()?;
+          .collect::<Result<List<QuootValue>, QuootEvalError>>()?;
         match evaluated_values.first() {
           None => Ok(QuootValue::List(List::new())),
           Some(function) => match function {
-            QuootValue::Fn(f) => {
-              self.apply(f.clone(), evaluated_values[1..].iter().collect())
-            }
+            QuootValue::Fn(f) => self.apply(
+              f.clone(),
+              match evaluated_values.drop_first() {
+                Some(list) => list,
+                None => List::new(),
+              },
+            ),
             _ => todo!(),
           },
         }
@@ -182,7 +186,7 @@ fn print_prompt() {
   io::stdout().flush().unwrap();
 }
 
-fn quoot_add(values: Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError> {
+fn quoot_add(values: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   let nums = values
     .iter()
     .map(|v| match v {
@@ -207,7 +211,7 @@ fn quoot_add(values: Vec<&QuootValue>) -> Result<QuootValue, QuootEvalError> {
 }
 
 fn quoot_multiply(
-  values: Vec<&QuootValue>,
+  values: List<QuootValue>,
 ) -> Result<QuootValue, QuootEvalError> {
   let nums = values
     .iter()
