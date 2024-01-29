@@ -23,6 +23,9 @@ impl Num {
   }
 }
 
+type QuootFn =
+  &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>;
+
 #[derive(Clone)]
 pub enum QuootValue {
   Nil,
@@ -30,7 +33,7 @@ pub enum QuootValue {
   Num(Num),
   String(String),
   Symbol(String),
-  Fn(&'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>),
+  Fn(QuootFn),
 }
 
 impl QuootValue {
@@ -107,6 +110,18 @@ impl QuootValue {
       }
     }
   }
+  pub fn as_fn(&self, error_prefix: &str) -> Result<QuootFn, QuootEvalError> {
+    match self {
+      QuootValue::Fn(f) => Ok(f.clone()),
+      _ => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "{}: can't use type {} as a function",
+          error_prefix,
+          self.type_string()
+        )))
+      }
+    }
+  }
 }
 
 impl fmt::Display for QuootValue {
@@ -141,6 +156,21 @@ impl fmt::Display for QuootValue {
     }
     Ok(())
   }
+}
+
+pub fn compose(f: QuootFn, g: QuootFn) -> QuootFn {
+  Box::leak(Box::new(move |args| f(List::new().push_front(g(args)?))))
+}
+
+pub fn partial(f: QuootFn, prefix_args: List<QuootValue>) -> QuootFn {
+  let reversed_args = prefix_args.reverse();
+  Box::leak(Box::new(move |args| {
+    f(reversed_args
+      .iter()
+      .fold(args, |expanded_args, prefix_arg| {
+        expanded_args.push_front(prefix_arg.to_owned())
+      }))
+  }))
 }
 
 #[derive(Debug)]
@@ -184,7 +214,7 @@ impl Interpreter {
   }
   pub fn apply(
     &self,
-    f: &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>,
+    f: QuootFn,
     args: List<QuootValue>,
   ) -> Result<QuootValue, QuootEvalError> {
     f(args)
@@ -595,12 +625,50 @@ fn quoot_map(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   }
 }
 
-fn quoot_partial(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
-  todo!()
+fn quoot_identity(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 1 {
+    Ok(args.first().unwrap().clone())
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "identity: needed 1 argument, received {}",
+      args.len()
+    )))
+  }
 }
 
 fn quoot_compose(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
-  todo!()
+  match args.len() {
+    0 => Ok(QuootValue::Fn(&quoot_identity)),
+    1 => Ok(QuootValue::Fn(args.first().unwrap().as_fn("compose")?)),
+    n => {
+      let fns = args
+        .iter()
+        .map(|arg| arg.as_fn("compose"))
+        .collect::<Vec<Result<QuootFn, QuootEvalError>>>()
+        .into_iter()
+        .collect::<Result<Vec<QuootFn>, QuootEvalError>>()?;
+      let mut f: QuootFn = fns[0];
+      for i in 1..n {
+        f = compose(f, fns[i]);
+      }
+      Ok(QuootValue::Fn(f))
+    }
+  }
+}
+
+fn quoot_partial(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => Err(QuootEvalError::FunctionError(
+      "partial needs at least 1 argument, got 0".to_owned(),
+    )),
+    1 => Ok(QuootValue::Fn(args.first().unwrap().as_fn("partial")?)),
+    n => {
+      let f = args.first().unwrap().as_fn("partial")?;
+      Ok(QuootValue::Fn(partial(f, args.drop_first().unwrap())))
+    }
+  }
 }
 
 pub fn repl() {
@@ -624,11 +692,13 @@ pub fn repl() {
   interpreter.add_binding("nth".to_owned(), QuootValue::Fn(&quoot_nth));
   interpreter
     .add_binding("transpose".to_owned(), QuootValue::Fn(&quoot_transpose));
+  interpreter
+    .add_binding("identity".to_owned(), QuootValue::Fn(&quoot_identity));
   interpreter.add_binding("apply".to_owned(), QuootValue::Fn(&quoot_apply));
   interpreter.add_binding("partial".to_owned(), QuootValue::Fn(&quoot_partial));
-  interpreter.add_binding(".".to_owned(), QuootValue::Fn(&quoot_partial));
+  interpreter.add_binding("|".to_owned(), QuootValue::Fn(&quoot_partial));
   interpreter.add_binding("compose".to_owned(), QuootValue::Fn(&quoot_compose));
-  interpreter.add_binding("|".to_owned(), QuootValue::Fn(&quoot_compose));
+  interpreter.add_binding(".".to_owned(), QuootValue::Fn(&quoot_compose));
   interpreter.add_binding("map".to_owned(), QuootValue::Fn(&quoot_map));
   let mut input_buffer = String::new();
   let stdin = io::stdin();

@@ -4,10 +4,14 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 ## to do
 ### high priority
 * create a default environment
-  * higher-order functions
-    * comp
-    * partial
+  * range
+    * implementing the arity-1 version will be easy
+    * should also implement the arity-0 version, as a test for laziness
+      * e.g should be able to do like (map + (range) (list 5 5 5)) and not infinitely loop
+        * will need to change transpose function for this
+      * probably need to add another value type like QuootValue::LazyList or smth to make this work
 * When you try to call a list as a function, treat it as an invocation of nth
+  * should be able to handle this adding a clause to as_fn for lists
   * will use similar behavior for vectors and hashmaps eventually
 * maybe get rid of Sexp in parser, just have QuootValue?
   * QuootValue could maybe be in it's own "model.rs" file
@@ -16,9 +20,8 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 * use &str in place of &[char] in parser
   * should be doable with char_indices
 * add vectors, hashmaps, and sets
-  * pull in the rpds crate for this
   * add constructors fns for the corresponding names to the default environment
-  * add `nth` and `get` to the default environment
+  * add `get` to the default environment
 * lambdas
 * quoting
 
