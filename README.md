@@ -4,10 +4,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 ## to do
 ### high priority
 * create a default environment
-  * list
-  * cons, concat, count
-  * apply
-  * maybe try higher-order functions like map and comp?
+  * maybe try higher-order functions like apply, map, and comp?
 * maybe get rid of Sexp in parser, just have QuootValue?
   * QuootValue could maybe be in it's own "model.rs" file
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time

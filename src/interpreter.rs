@@ -68,13 +68,29 @@ impl QuootValue {
     }
     .to_string()
   }
-  pub fn num(&self, error_prefix: &str) -> Result<Num, QuootEvalError> {
+  pub fn as_num(&self, error_prefix: &str) -> Result<Num, QuootEvalError> {
     match self {
       QuootValue::Nil => Ok(Num::Int(0)),
       QuootValue::Num(num) => Ok(num.clone()),
       _ => {
         return Err(QuootEvalError::FunctionError(format!(
           "{}: can't get num from type {}",
+          error_prefix,
+          self.type_string()
+        )))
+      }
+    }
+  }
+  pub fn as_list(
+    &self,
+    error_prefix: &str,
+  ) -> Result<List<QuootValue>, QuootEvalError> {
+    match self {
+      QuootValue::Nil => Ok(List::new()),
+      QuootValue::List(list) => Ok(list.clone()),
+      _ => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "{}: can't get list from type {}",
           error_prefix,
           self.type_string()
         )))
@@ -206,7 +222,7 @@ fn quoot_value_sum(
   Ok(
     values
       .iter()
-      .map(|v| v.num(error_message_name))
+      .map(|v| v.as_num(error_message_name))
       .into_iter()
       .collect::<Result<Vec<Num>, QuootEvalError>>()?
       .iter()
@@ -226,7 +242,7 @@ fn quoot_value_product(
   Ok(
     values
       .iter()
-      .map(|v| v.num(error_message_name))
+      .map(|v| v.as_num(error_message_name))
       .into_iter()
       .collect::<Result<Vec<Num>, QuootEvalError>>()?
       .iter()
@@ -257,7 +273,7 @@ fn quoot_subtract(
       "-: must supply at least one argument".to_owned(),
     )),
     Some(value) => {
-      let first_num = value.num("-")?;
+      let first_num = value.as_num("-")?;
       match args.drop_first() {
         None => unreachable!(),
         Some(other_values) => Ok(QuootValue::Num(if other_values.len() == 0 {
@@ -284,7 +300,7 @@ fn quoot_divide(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
       "/: must supply at least one argument".to_owned(),
     )),
     Some(value) => {
-      let first_num = value.num("/")?;
+      let first_num = value.as_num("/")?;
       match args.drop_first() {
         None => unreachable!(),
         Some(other_values) => Ok(QuootValue::Num(if other_values.len() == 0 {
@@ -307,8 +323,8 @@ fn quoot_divide(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
 
 fn quoot_modulo(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    let dividend = args.first().unwrap().num("mod")?;
-    let divisor = args.drop_first().unwrap().first().unwrap().num("mod")?;
+    let dividend = args.first().unwrap().as_num("mod")?;
+    let divisor = args.drop_first().unwrap().first().unwrap().as_num("mod")?;
     Ok(QuootValue::Num(match (dividend, divisor) {
       (Num::Int(a), Num::Int(b)) => Num::Int(a % b),
       (Num::Float(a), Num::Float(b)) => Num::Float(a % b),
@@ -327,8 +343,8 @@ fn quoot_quotient(
   args: List<QuootValue>,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    let dividend = args.first().unwrap().num("quot")?;
-    let divisor = args.drop_first().unwrap().first().unwrap().num("quot")?;
+    let dividend = args.first().unwrap().as_num("quot")?;
+    let divisor = args.drop_first().unwrap().first().unwrap().as_num("quot")?;
     Ok(QuootValue::Num(match (dividend, divisor) {
       (Num::Int(a), Num::Int(b)) => Num::Int(a / b),
       (Num::Float(a), Num::Float(b)) => Num::Int((a / b) as i64),
@@ -340,6 +356,86 @@ fn quoot_quotient(
       "quot: need 2 arguments, got {}",
       args.len()
     )))
+  }
+}
+
+fn quoot_list_constructor(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  Ok(QuootValue::List(args))
+}
+
+fn quoot_count(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 1 {
+    match args.first().unwrap() {
+      QuootValue::Nil => Ok(QuootValue::Num(Num::Int(0))),
+      QuootValue::List(list) => {
+        Ok(QuootValue::Num(Num::Int(list.len() as i64)))
+      }
+      v => Err(QuootEvalError::FunctionError(format!(
+        "count: can't count type <{}>",
+        v.type_string()
+      ))),
+    }
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "count: need 1 argument, got {}",
+      args.len()
+    )))
+  }
+}
+
+fn quoot_cons(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  match args.first() {
+    None => Err(QuootEvalError::FunctionError(
+      "cons: need at least 1 argument, got 0".to_string(),
+    )),
+    Some(element) => {
+      let rest_args = args.drop_first().unwrap();
+      match rest_args.len() {
+        0 => Ok(QuootValue::List(List::new().push_front(element.clone()))),
+        1 => {
+          let second_arg = rest_args.first().unwrap();
+          match second_arg {
+            QuootValue::List(list) => {
+              Ok(QuootValue::List(list.push_front(element.clone())))
+            }
+            QuootValue::Nil => {
+              Ok(QuootValue::List(List::new().push_front(element.clone())))
+            }
+            _ => Err(QuootEvalError::FunctionError(format!(
+              "cons: cannot cons into a <{}>",
+              second_arg.type_string()
+            ))),
+          }
+        }
+        n => Err(QuootEvalError::FunctionError(format!(
+          "cons: need 1 or 2 arguments, got {}",
+          n
+        ))),
+      }
+    }
+  }
+}
+
+fn quoot_concat(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 0 {
+    Ok(QuootValue::List(List::new()))
+  } else {
+    let mut lists = args
+      .iter()
+      .map(|v| v.as_list("concat"))
+      .into_iter()
+      .collect::<Result<Vec<List<QuootValue>>, QuootEvalError>>(
+    )?;
+    let mut concat_list = lists.pop().unwrap();
+    for list in lists.iter().rev() {
+      concat_list = list
+        .reverse()
+        .iter()
+        .fold(concat_list, |l, e| l.push_front(e.to_owned()));
+    }
+    Ok(QuootValue::List(concat_list))
   }
 }
 
@@ -356,6 +452,11 @@ pub fn repl() {
   interpreter.add_binding("/".to_owned(), QuootValue::Fn(&quoot_divide));
   interpreter.add_binding("mod".to_owned(), QuootValue::Fn(&quoot_modulo));
   interpreter.add_binding("quot".to_owned(), QuootValue::Fn(&quoot_quotient));
+  interpreter
+    .add_binding("list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
+  interpreter.add_binding("count".to_owned(), QuootValue::Fn(&quoot_count));
+  interpreter.add_binding("cons".to_owned(), QuootValue::Fn(&quoot_cons));
+  interpreter.add_binding("concat".to_owned(), QuootValue::Fn(&quoot_concat));
   let mut input_buffer = String::new();
   let stdin = io::stdin();
   print_prompt();
