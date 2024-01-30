@@ -4,9 +4,11 @@ use crate::library::quoot_compose;
 use crate::library::quoot_concat;
 use crate::library::quoot_cons;
 use crate::library::quoot_count;
+use crate::library::quoot_dec;
 use crate::library::quoot_divide;
 use crate::library::quoot_drop;
 use crate::library::quoot_identity;
+use crate::library::quoot_inc;
 use crate::library::quoot_list_constructor;
 use crate::library::quoot_map;
 use crate::library::quoot_modulo;
@@ -41,6 +43,8 @@ impl Env {
   }
   pub fn add_standard_bindings(&mut self) {
     self.bind("TAU", QuootValue::Num(Num::Float(6.283185307179586)));
+    self.bind("inc", QuootValue::Fn(&quoot_inc));
+    self.bind("dec", QuootValue::Fn(&quoot_dec));
     self.bind("+", QuootValue::Fn(&quoot_add));
     self.bind("-", QuootValue::Fn(&quoot_subtract));
     self.bind("*", QuootValue::Fn(&quoot_multiply));

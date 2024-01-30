@@ -77,6 +77,38 @@ fn transpose(
   }
 }
 
+pub fn quoot_inc(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 1 {
+    Ok(QuootValue::Num(
+      match args.first().unwrap().as_num("inc")? {
+        Num::Int(i) => Num::Int(i + 1),
+        Num::Float(f) => Num::Float(f + 1.0),
+      },
+    ))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "inc: needed 1 argument, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_dec(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 1 {
+    Ok(QuootValue::Num(
+      match args.first().unwrap().as_num("inc")? {
+        Num::Int(i) => Num::Int(i - 1),
+        Num::Float(f) => Num::Float(f - 1.0),
+      },
+    ))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "inc: needed 1 argument, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn quoot_add(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(value_sum(args, "+")?))
 }
