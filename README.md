@@ -8,6 +8,8 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
     * will need to change transpose function for this
   * probably need to add another value type like QuootValue::LazyList or smth to make this work
 * iterate
+* make map lazy
+  * as a test, (take 5 (map inc (range))) should work
 * When you try to call a list as a function, treat it as an invocation of nth
   * should be able to handle this adding a clause to as_fn for lists
   * will use similar behavior for vectors and hashmaps eventually

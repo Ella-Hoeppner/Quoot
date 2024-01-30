@@ -217,6 +217,25 @@ pub fn quoot_quotient(
   }
 }
 
+pub fn quoot_equal(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  Ok(QuootValue::Bool(match args.len() {
+    0 => true,
+    n => {
+      let first = args.first().unwrap();
+      let mut rest_args = args.drop_first().unwrap();
+      for _ in 1..n {
+        if first != rest_args.first().unwrap() {
+          return Ok(QuootValue::Bool(false));
+        }
+        rest_args = rest_args.drop_first().unwrap();
+      }
+      true
+    }
+  }))
+}
+
 pub fn quoot_list_constructor(
   args: List<QuootValue>,
 ) -> Result<QuootValue, QuootEvalError> {

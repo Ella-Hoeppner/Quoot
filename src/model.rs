@@ -2,7 +2,7 @@ use crate::parse::{QuootParseError, Sexp};
 use rpds::List;
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Num {
   Int(i64),
   Float(f64),
@@ -23,11 +23,24 @@ pub type QuootFn =
 #[derive(Clone)]
 pub enum QuootValue {
   Nil,
+  Bool(bool),
   List(List<QuootValue>),
   Num(Num),
   String(String),
   Symbol(String),
   Fn(QuootFn),
+}
+
+impl PartialEq for QuootValue {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::List(a), Self::List(b)) => a == b,
+      (Self::Num(a), Self::Num(b)) => a == b,
+      (Self::String(a), Self::String(b)) => a == b,
+      (Self::Symbol(a), Self::Symbol(b)) => a == b,
+      _ => false,
+    }
+  }
 }
 
 impl QuootValue {
@@ -64,6 +77,7 @@ impl QuootValue {
   pub fn type_string(&self) -> String {
     match self {
       QuootValue::Nil => "Nil",
+      QuootValue::Bool(_) => "Bool",
       QuootValue::Num(num) => match num {
         Num::Int(_) => "Integer",
         Num::Float(_) => "Float",
@@ -147,6 +161,9 @@ impl fmt::Display for QuootValue {
       }
       QuootValue::Nil => fmt.write_str("nil")?,
       QuootValue::Fn(_) => fmt.write_str("<Function>")?,
+      QuootValue::Bool(b) => {
+        fmt.write_str(if *b { "true" } else { "false" })?
+      }
     }
     Ok(())
   }
