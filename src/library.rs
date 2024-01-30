@@ -5,7 +5,7 @@ use crate::model::QuootEvalError;
 use crate::model::QuootFn;
 use crate::model::QuootValue;
 use rpds::List;
-use std::cmp::min;
+use std::cmp::{max, min};
 
 fn value_sum(
   values: List<QuootValue>,
@@ -319,6 +319,82 @@ pub fn quoot_transpose(
       list.push_front(QuootValue::List(v.to_owned()))
     }),
   ))
+}
+
+pub fn quoot_take(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let n = max(0, args.first().unwrap().as_num("take")?.floor()) as usize;
+    let mut list = args
+      .drop_first()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_list("take")?;
+    Ok(QuootValue::List(if n >= list.len() {
+      list
+    } else {
+      let mut taken_list: List<QuootValue> = List::new();
+      for i in 0..n {
+        taken_list = taken_list.push_front(list.first().unwrap().clone());
+        list = list.drop_first().unwrap();
+      }
+      taken_list.reverse()
+    }))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "take: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_drop(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let n = max(0, args.first().unwrap().as_num("drop")?.floor()) as usize;
+    let mut list = args
+      .drop_first()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_list("drop")?;
+    Ok(QuootValue::List(if n >= list.len() {
+      List::new()
+    } else {
+      for i in 0..n {
+        list = list.drop_first().unwrap();
+      }
+      list
+    }))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "drop: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_range(
+  args: List<QuootValue>,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => todo!(),
+    1 => {
+      let n = args.first().unwrap().as_num("range")?.floor();
+      Ok(QuootValue::List(
+        (0..n).rev().fold(List::new(), |list, i| {
+          list.push_front(QuootValue::Num(Num::Int(i)))
+        }),
+      ))
+    }
+    n => Err(QuootEvalError::FunctionError(format!(
+      "range: need 1 or 2 arguments, got {}",
+      n
+    ))),
+  }
 }
 
 pub fn quoot_apply(
