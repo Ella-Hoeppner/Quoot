@@ -564,3 +564,84 @@ pub fn quoot_is_empty(
     ))),
   }
 }
+
+pub fn quoot_first(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => match args.front().unwrap() {
+      QuootValue::Nil => Ok(QuootValue::Nil),
+      QuootValue::List(list) => Ok(match list.front() {
+        None => QuootValue::Nil,
+        Some(value) => value.to_owned(),
+      }),
+      other => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "first cannot get the first element of a {}",
+          other.type_string()
+        )))
+      }
+    },
+    n => Err(QuootEvalError::FunctionError(format!(
+      "first needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_last(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => match args.front().unwrap() {
+      QuootValue::Nil => Ok(QuootValue::Nil),
+      QuootValue::List(list) => Ok(match list.last() {
+        None => QuootValue::Nil,
+        Some(value) => value.to_owned(),
+      }),
+      other => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "last cannot get the last element of a {}",
+          other.type_string()
+        )))
+      }
+    },
+    n => Err(QuootEvalError::FunctionError(format!(
+      "last needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_bool(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(args.front().unwrap().as_bool())),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "bool needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_int(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Num(Num::Int(
+      args.front().unwrap().as_num("int")?.floor(),
+    ))),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "int needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_abs(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Num(
+      match args.front().unwrap().as_num("int")? {
+        Num::Int(i) => Num::Int(i.abs()),
+        Num::Float(f) => Num::Float(f.abs()),
+      },
+    )),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "int needs 1 argument, got {}",
+      n
+    ))),
+  }
+}

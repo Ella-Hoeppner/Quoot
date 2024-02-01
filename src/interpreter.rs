@@ -1,5 +1,7 @@
+use crate::library::quoot_abs;
 use crate::library::quoot_add;
 use crate::library::quoot_apply;
+use crate::library::quoot_bool;
 use crate::library::quoot_compose;
 use crate::library::quoot_concat;
 use crate::library::quoot_cons;
@@ -8,9 +10,11 @@ use crate::library::quoot_dec;
 use crate::library::quoot_divide;
 use crate::library::quoot_drop;
 use crate::library::quoot_equal;
+use crate::library::quoot_first;
 use crate::library::quoot_get;
 use crate::library::quoot_identity;
 use crate::library::quoot_inc;
+use crate::library::quoot_int;
 use crate::library::quoot_is_bool;
 use crate::library::quoot_is_empty;
 use crate::library::quoot_is_fn;
@@ -19,6 +23,7 @@ use crate::library::quoot_is_nil;
 use crate::library::quoot_is_num;
 use crate::library::quoot_is_string;
 use crate::library::quoot_is_symbol;
+use crate::library::quoot_last;
 use crate::library::quoot_list_constructor;
 use crate::library::quoot_map;
 use crate::library::quoot_modulo;
@@ -83,6 +88,11 @@ impl Env {
     self.bind("symbol?", QuootValue::Fn(&quoot_is_symbol));
     self.bind("fn?", QuootValue::Fn(&quoot_is_fn));
     self.bind("empty?", QuootValue::Fn(&quoot_is_empty));
+    self.bind("bool", QuootValue::Fn(&quoot_bool));
+    self.bind("int", QuootValue::Fn(&quoot_int));
+    self.bind("abs", QuootValue::Fn(&quoot_abs));
+    self.bind("first", QuootValue::Fn(&quoot_first));
+    self.bind("last", QuootValue::Fn(&quoot_last));
   }
 }
 

@@ -3,7 +3,6 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 
 ## to do
 ### high priority
-* make "true" and "false" symbols evaluate as bools
 * implement laziness
   * need a new type like QuootValue::LazyList
 * implement arity-0 range, as a test for laziness
@@ -15,14 +14,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 * implement as_fn for QuootValue::List
   * treat it as a call to nth
 * more standard library functions:
-  * num
-  * int
-  * bool
-  * not=
-  * first
-  * last
   * reverse
-  * abs
   * min, max
   * \>, \<
   * drop-last, take-last

@@ -50,6 +50,15 @@ impl QuootValue {
     if chars[0] == '"' {
       return QuootValue::String(chars[1..chars.len() - 1].iter().collect());
     }
+    if token == "nil" {
+      return QuootValue::Nil;
+    }
+    if token == "true" {
+      return QuootValue::Bool(true);
+    }
+    if token == "false" {
+      return QuootValue::Bool(false);
+    }
     match token.parse::<i64>() {
       Ok(int) => return QuootValue::Num(Num::Int(int)),
       Err(_) => match token.parse::<f64>() {
@@ -68,13 +77,7 @@ impl QuootValue {
           .for_each(|sub_sexp| v.push_back(QuootValue::from_sexp(sub_sexp)));
         QuootValue::List(v.to_owned())
       }
-      Sexp::Leaf(token) => {
-        if token == "nil" {
-          QuootValue::Nil
-        } else {
-          QuootValue::from_token(token)
-        }
-      }
+      Sexp::Leaf(token) => QuootValue::from_token(token),
     }
   }
   pub fn type_string(&self) -> String {
@@ -131,6 +134,13 @@ impl QuootValue {
           self.type_string()
         )))
       }
+    }
+  }
+  pub fn as_bool(&self) -> bool {
+    match self {
+      QuootValue::Nil => false,
+      QuootValue::Bool(b) => *b,
+      _ => true,
     }
   }
 }
