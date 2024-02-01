@@ -15,14 +15,6 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 * implement as_fn for QuootValue::List
   * treat it as a call to nth
 * more standard library functions:
-  * nil?
-  * bool?
-  * list?
-  * num?
-  * str?
-  * symbol?
-  * fn?
-  * empty?
   * num
   * int
   * bool
@@ -98,6 +90,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 * add hashmaps and sets
   * add constructors fns for the corresponding names to the default environment
   * add `get` to the default environment
+  * map? or hashmap? function
 * lambdas
 * quoting
 

@@ -11,6 +11,14 @@ use crate::library::quoot_equal;
 use crate::library::quoot_get;
 use crate::library::quoot_identity;
 use crate::library::quoot_inc;
+use crate::library::quoot_is_bool;
+use crate::library::quoot_is_empty;
+use crate::library::quoot_is_fn;
+use crate::library::quoot_is_list;
+use crate::library::quoot_is_nil;
+use crate::library::quoot_is_num;
+use crate::library::quoot_is_string;
+use crate::library::quoot_is_symbol;
 use crate::library::quoot_list_constructor;
 use crate::library::quoot_map;
 use crate::library::quoot_modulo;
@@ -67,6 +75,14 @@ impl Env {
     self.bind("compose", QuootValue::Fn(&quoot_compose));
     self.bind(".", QuootValue::Fn(&quoot_compose));
     self.bind("map", QuootValue::Fn(&quoot_map));
+    self.bind("nil?", QuootValue::Fn(&quoot_is_nil));
+    self.bind("bool?", QuootValue::Fn(&quoot_is_bool));
+    self.bind("list?", QuootValue::Fn(&quoot_is_list));
+    self.bind("num?", QuootValue::Fn(&quoot_is_num));
+    self.bind("str?", QuootValue::Fn(&quoot_is_string));
+    self.bind("symbol?", QuootValue::Fn(&quoot_is_symbol));
+    self.bind("fn?", QuootValue::Fn(&quoot_is_fn));
+    self.bind("empty?", QuootValue::Fn(&quoot_is_empty));
   }
 }
 

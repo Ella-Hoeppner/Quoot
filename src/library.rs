@@ -440,3 +440,127 @@ pub fn quoot_partial(
     }
   }
 }
+
+pub fn quoot_is_nil(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Nil => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "nil? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_bool(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Bool(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "bool? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_list(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::List(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "list? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_num(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Num(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "num? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_string(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::String(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "str? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_symbol(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Symbol(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "symbol? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_fn(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Fn(_) => true,
+      _ => false,
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "fn? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_empty(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(match args.front().unwrap() {
+      QuootValue::Nil => true,
+      QuootValue::List(list) => list.is_empty(),
+      other => {
+        return Err(QuootEvalError::FunctionError(format!(
+          "empty? needs a collection, cannot check whether type {} is empty",
+          other.type_string()
+        )))
+      }
+    })),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "empty? needs 1 argument, got {}",
+      n
+    ))),
+  }
+}
