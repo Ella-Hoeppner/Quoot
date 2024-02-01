@@ -25,8 +25,8 @@ use crate::model::Num;
 use crate::model::QuootEvalError;
 use crate::model::QuootFn;
 use crate::model::QuootValue;
+use crate::model::QuootValueList;
 use crate::parse::parse;
-use rpds::List;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
@@ -93,7 +93,7 @@ impl Interpreter {
   pub fn apply(
     &self,
     f: QuootFn,
-    args: List<QuootValue>,
+    args: QuootValueList,
   ) -> Result<QuootValue, QuootEvalError> {
     f(args)
   }
@@ -104,19 +104,19 @@ impl Interpreter {
     match value {
       QuootValue::Symbol(name) => self.get_binding(name),
       QuootValue::List(values) => {
-        let evaluated_values: List<QuootValue> = values
+        let evaluated_values: QuootValueList = values
           .iter()
           .map(|v| self.eval(v.to_owned()))
           .into_iter()
-          .collect::<Result<List<QuootValue>, QuootEvalError>>()?;
+          .collect::<Result<QuootValueList, QuootEvalError>>()?;
         match evaluated_values.first() {
-          None => Ok(QuootValue::List(List::new())),
+          None => Ok(QuootValue::List(QuootValueList::new())),
           Some(function) => match function {
             QuootValue::Fn(f) => self.apply(
               f.clone(),
               match evaluated_values.drop_first() {
                 Some(list) => list,
-                None => List::new(),
+                None => QuootValueList::new(),
               },
             ),
             _ => todo!(),

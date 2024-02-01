@@ -2,6 +2,10 @@ use crate::parse::{QuootParseError, Sexp};
 use rpds::List;
 use std::fmt;
 
+pub type QuootValueList = List<QuootValue>;
+pub type QuootFn =
+  &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>;
+
 #[derive(Clone, PartialEq)]
 pub enum Num {
   Int(i64),
@@ -16,9 +20,6 @@ impl Num {
     }
   }
 }
-
-pub type QuootFn =
-  &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>;
 
 #[derive(Clone)]
 pub enum QuootValue {

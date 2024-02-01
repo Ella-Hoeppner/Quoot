@@ -4,11 +4,12 @@ use crate::model::Num;
 use crate::model::QuootEvalError;
 use crate::model::QuootFn;
 use crate::model::QuootValue;
+use crate::model::QuootValueList;
 use rpds::List;
 use std::cmp::{max, min};
 
 fn value_sum(
-  values: List<QuootValue>,
+  values: QuootValueList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(
@@ -28,7 +29,7 @@ fn value_sum(
 }
 
 fn value_product(
-  values: List<QuootValue>,
+  values: QuootValueList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(
@@ -48,20 +49,20 @@ fn value_product(
 }
 
 fn transpose(
-  values: List<QuootValue>,
+  values: QuootValueList,
   error_message_name: &str,
-) -> Result<Vec<List<QuootValue>>, QuootEvalError> {
+) -> Result<Vec<QuootValueList>, QuootEvalError> {
   if values.len() == 0 {
     Ok(vec![])
   } else {
-    let lists: Vec<List<QuootValue>> = values
+    let lists: Vec<QuootValueList> = values
       .reverse()
       .iter()
       .map(|value| value.as_list(error_message_name))
-      .collect::<Vec<Result<List<QuootValue>, QuootEvalError>>>()
+      .collect::<Vec<Result<QuootValueList, QuootEvalError>>>()
       .into_iter()
-      .collect::<Result<Vec<List<QuootValue>>, QuootEvalError>>()?;
-    let transposed_lists: Vec<List<QuootValue>> = lists
+      .collect::<Result<Vec<QuootValueList>, QuootEvalError>>()?;
+    let transposed_lists: Vec<QuootValueList> = lists
       .first()
       .unwrap()
       .iter()
@@ -77,7 +78,7 @@ fn transpose(
   }
 }
 
-pub fn quoot_inc(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_inc(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
       match args.first().unwrap().as_num("inc")? {
@@ -93,7 +94,7 @@ pub fn quoot_inc(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   }
 }
 
-pub fn quoot_dec(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_dec(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
       match args.first().unwrap().as_num("inc")? {
@@ -109,18 +110,18 @@ pub fn quoot_dec(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
   }
 }
 
-pub fn quoot_add(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_add(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(value_sum(args, "+")?))
 }
 
 pub fn quoot_multiply(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(value_product(args, "*")?))
 }
 
 pub fn quoot_subtract(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.first() {
     None => Err(QuootEvalError::FunctionError(
@@ -149,7 +150,7 @@ pub fn quoot_subtract(
 }
 
 pub fn quoot_divide(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.first() {
     None => Err(QuootEvalError::FunctionError(
@@ -178,7 +179,7 @@ pub fn quoot_divide(
 }
 
 pub fn quoot_modulo(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let dividend = args.first().unwrap().as_num("mod")?;
@@ -198,7 +199,7 @@ pub fn quoot_modulo(
 }
 
 pub fn quoot_quotient(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let dividend = args.first().unwrap().as_num("quot")?;
@@ -217,9 +218,7 @@ pub fn quoot_quotient(
   }
 }
 
-pub fn quoot_equal(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_equal(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Bool(match args.len() {
     0 => true,
     n => {
@@ -237,14 +236,12 @@ pub fn quoot_equal(
 }
 
 pub fn quoot_list_constructor(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::List(args))
 }
 
-pub fn quoot_count(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_count(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     match args.first().unwrap() {
       QuootValue::Nil => Ok(QuootValue::Num(Num::Int(0))),
@@ -264,9 +261,7 @@ pub fn quoot_count(
   }
 }
 
-pub fn quoot_cons(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_cons(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.first() {
     None => Err(QuootEvalError::FunctionError(
       "cons: need at least 1 argument, got 0".to_string(),
@@ -300,7 +295,7 @@ pub fn quoot_cons(
 }
 
 pub fn quoot_concat(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 0 {
     Ok(QuootValue::List(List::new()))
@@ -309,8 +304,7 @@ pub fn quoot_concat(
       .iter()
       .map(|v| v.as_list("concat"))
       .into_iter()
-      .collect::<Result<Vec<List<QuootValue>>, QuootEvalError>>(
-    )?;
+      .collect::<Result<Vec<QuootValueList>, QuootEvalError>>()?;
     let mut concat_list = lists.pop().unwrap();
     for list in lists.iter().rev() {
       concat_list = list
@@ -322,7 +316,7 @@ pub fn quoot_concat(
   }
 }
 
-pub fn quoot_nth(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_nth(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     match args.first().unwrap() {
       QuootValue::Nil => Ok(QuootValue::Nil),
@@ -362,7 +356,7 @@ pub fn quoot_nth(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
 }
 
 pub fn quoot_transpose(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   let transposition = transpose(args, "transpose")?;
   Ok(QuootValue::List(
@@ -372,9 +366,7 @@ pub fn quoot_transpose(
   ))
 }
 
-pub fn quoot_take(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_take(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let n = max(0, args.first().unwrap().as_num("take")?.floor()) as usize;
     let mut list = args
@@ -386,7 +378,7 @@ pub fn quoot_take(
     Ok(QuootValue::List(if n >= list.len() {
       list
     } else {
-      let mut taken_list: List<QuootValue> = List::new();
+      let mut taken_list: QuootValueList = List::new();
       for i in 0..n {
         taken_list = taken_list.push_front(list.first().unwrap().clone());
         list = list.drop_first().unwrap();
@@ -401,9 +393,7 @@ pub fn quoot_take(
   }
 }
 
-pub fn quoot_drop(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_drop(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let n = max(0, args.first().unwrap().as_num("drop")?.floor()) as usize;
     let mut list = args
@@ -428,9 +418,7 @@ pub fn quoot_drop(
   }
 }
 
-pub fn quoot_range(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_range(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => todo!(),
     1 => {
@@ -448,9 +436,7 @@ pub fn quoot_range(
   }
 }
 
-pub fn quoot_apply(
-  args: List<QuootValue>,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_apply(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
       "apply: need 1 or 2 arguments, got 0".to_string(),
@@ -484,7 +470,7 @@ pub fn quoot_apply(
   }
 }
 
-pub fn quoot_map(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_map(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() < 2 {
     Err(QuootEvalError::FunctionError(format!(
       "map: need at least 2 arguments, got {}",
@@ -517,7 +503,7 @@ pub fn quoot_map(args: List<QuootValue>) -> Result<QuootValue, QuootEvalError> {
 }
 
 pub fn quoot_identity(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(args.first().unwrap().clone())
@@ -530,7 +516,7 @@ pub fn quoot_identity(
 }
 
 pub fn quoot_compose(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Ok(QuootValue::Fn(&quoot_identity)),
@@ -552,7 +538,7 @@ pub fn quoot_compose(
 }
 
 pub fn quoot_partial(
-  args: List<QuootValue>,
+  args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(

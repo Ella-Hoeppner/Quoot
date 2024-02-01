@@ -3,13 +3,22 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 
 ## to do
 ### high priority
+* strongly consider switching to im crate rather than rpds
+  * the im Vector apparently allows pushing and popping on *both* the front and back in O(1), in the same data structure. Also has concatenation in O(log(n)) :O
+  * oh wait looks like im is unmaintained and might have some critical bugs...
+    * imbl is an alternative that is maintained and fixes those bugs, but removes the hash impl on hashmap :(
+      * I guess I can fork imbl and re-implement that impl myself?
 * implement arity-0 range, as a test for laziness
-  * e.g should be able to do like (map + (range) (list 5 5 5)) and not infinitely loop
-    * will need to change transpose function for this
+  * e.g should be able to do (take 5 (range)) and not infinitely loop
   * probably need to add another value type like QuootValue::LazyList or smth to make this work
 * iterate
 * make map lazy
   * as a test, (take 5 (map inc (range))) should work
+    * as should (map + (list 1 2 3) (range))
+  * probably need to reimplement transpose
+    * actually I guess having a "transpose" function is kinda silly, its the same as (| map list)
+      * so we can just get rid of the general "transpose" helper fn when reimplementing map, if that makes things easier
+* make concat lazy
 * When you try to call a list as a function, treat it as an invocation of nth
   * should be able to handle this adding a clause to as_fn for lists
   * will use similar behavior for vectors and hashmaps eventually
