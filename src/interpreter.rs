@@ -26,11 +26,15 @@ use crate::library::quoot_is_symbol;
 use crate::library::quoot_last;
 use crate::library::quoot_list_constructor;
 use crate::library::quoot_map;
+use crate::library::quoot_max;
+use crate::library::quoot_min;
 use crate::library::quoot_modulo;
 use crate::library::quoot_multiply;
+use crate::library::quoot_numerical_equal;
 use crate::library::quoot_partial;
 use crate::library::quoot_quotient;
 use crate::library::quoot_range;
+use crate::library::quoot_reverse;
 use crate::library::quoot_subtract;
 use crate::library::quoot_take;
 use crate::model::Num;
@@ -57,12 +61,15 @@ impl Env {
   pub fn add_standard_bindings(&mut self) {
     self.bind("TAU", QuootValue::Num(Num::Float(6.283185307179586)));
     self.bind("=", QuootValue::Fn(&quoot_equal));
+    self.bind("==", QuootValue::Fn(&quoot_numerical_equal));
     self.bind("inc", QuootValue::Fn(&quoot_inc));
     self.bind("dec", QuootValue::Fn(&quoot_dec));
     self.bind("+", QuootValue::Fn(&quoot_add));
     self.bind("-", QuootValue::Fn(&quoot_subtract));
     self.bind("*", QuootValue::Fn(&quoot_multiply));
     self.bind("/", QuootValue::Fn(&quoot_divide));
+    self.bind("min", QuootValue::Fn(&quoot_min));
+    self.bind("max", QuootValue::Fn(&quoot_max));
     self.bind("mod", QuootValue::Fn(&quoot_modulo));
     self.bind("quot", QuootValue::Fn(&quoot_quotient));
     self.bind("list", QuootValue::Fn(&quoot_list_constructor));
@@ -93,6 +100,7 @@ impl Env {
     self.bind("abs", QuootValue::Fn(&quoot_abs));
     self.bind("first", QuootValue::Fn(&quoot_first));
     self.bind("last", QuootValue::Fn(&quoot_last));
+    self.bind("reverse", QuootValue::Fn(&quoot_reverse));
   }
 }
 

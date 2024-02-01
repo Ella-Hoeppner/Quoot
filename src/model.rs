@@ -6,7 +6,7 @@ pub type QuootValueList = Vector<QuootValue>;
 pub type QuootFn =
   &'static dyn Fn(QuootValueList) -> Result<QuootValue, QuootEvalError>;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Num {
   Int(i64),
   Float(f64),
@@ -17,6 +17,77 @@ impl Num {
     match self {
       Num::Int(i) => *i,
       Num::Float(f) => *f as i64,
+    }
+  }
+  pub fn add(a: Num, b: &Num) -> Num {
+    match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a + b),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a + b),
+      (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) + b),
+      (Num::Float(a), Num::Int(b)) => Num::Float(a + (*b as f64)),
+    }
+  }
+  pub fn multiply(a: Num, b: &Num) -> Num {
+    match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a * b),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a * b),
+      (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) * b),
+      (Num::Float(a), Num::Int(b)) => Num::Float(a * (*b as f64)),
+    }
+  }
+  pub fn min(a: Num, b: &Num) -> Num {
+    match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a.min(*b)),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a.min(*b)),
+      (Num::Int(a), Num::Float(b)) => {
+        let b_derefed = *b;
+        if (a as f64) <= b_derefed {
+          Num::Int(a)
+        } else {
+          Num::Float(b_derefed)
+        }
+      }
+      (Num::Float(a), Num::Int(b)) => {
+        let b_derefed = *b;
+        if (b_derefed as f64) <= a {
+          Num::Int(b_derefed)
+        } else {
+          Num::Float(a)
+        }
+      }
+    }
+  }
+  pub fn max(a: Num, b: &Num) -> Num {
+    match (a, b) {
+      (Num::Int(a), Num::Int(b)) => Num::Int(a.max(*b)),
+      (Num::Float(a), Num::Float(b)) => Num::Float(a.max(*b)),
+      (Num::Int(a), Num::Float(b)) => {
+        let b_derefed = *b;
+        if (a as f64) >= b_derefed {
+          Num::Int(a)
+        } else {
+          Num::Float(b_derefed)
+        }
+      }
+      (Num::Float(a), Num::Int(b)) => {
+        let b_derefed = *b;
+        if (b_derefed as f64) >= a {
+          Num::Int(b_derefed)
+        } else {
+          Num::Float(a)
+        }
+      }
+    }
+  }
+  pub fn numerical_equal(a: Num, b: &Num) -> bool {
+    match (a, b) {
+      (Num::Int(a), Num::Int(b)) => a == *b,
+      (Num::Float(a), Num::Float(b)) => a == *b,
+      (Num::Int(a), Num::Float(b)) => (a as f64) == *b,
+      (Num::Float(a), Num::Int(b)) => {
+        println!("{},{},{}", a, (*b as f64), a == (*b as f64));
+        a == (*b as f64)
+      }
     }
   }
 }

@@ -5,11 +5,12 @@ use crate::model::QuootEvalError;
 use crate::model::QuootFn;
 use crate::model::QuootValue;
 use crate::model::QuootValueList;
-use std::cmp::{max, min};
 
-fn value_sum(
+fn fold_nums<F: FnMut(Num, &Num) -> Num>(
   values: QuootValueList,
   error_message_name: &str,
+  init_value: Num,
+  folder: F,
 ) -> Result<Num, QuootEvalError> {
   Ok(
     values
@@ -18,33 +19,56 @@ fn value_sum(
       .into_iter()
       .collect::<Result<Vec<Num>, QuootEvalError>>()?
       .iter()
-      .fold(Num::Int(0), |a, b| match (a, b) {
-        (Num::Int(a), Num::Int(b)) => Num::Int(a + b),
-        (Num::Float(a), Num::Float(b)) => Num::Float(a + b),
-        (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) + b),
-        (Num::Float(a), Num::Int(b)) => Num::Float(a + (*b as f64)),
-      }),
+      .fold(init_value, folder),
   )
+}
+
+fn value_sum(
+  values: QuootValueList,
+  error_message_name: &str,
+) -> Result<Num, QuootEvalError> {
+  Ok(fold_nums(
+    values,
+    error_message_name,
+    Num::Int(0),
+    Num::add,
+  )?)
 }
 
 fn value_product(
   values: QuootValueList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
-  Ok(
-    values
-      .iter()
-      .map(|v| v.as_num(error_message_name))
-      .into_iter()
-      .collect::<Result<Vec<Num>, QuootEvalError>>()?
-      .iter()
-      .fold(Num::Int(1), |a, b| match (a, b) {
-        (Num::Int(a), Num::Int(b)) => Num::Int(a * b),
-        (Num::Float(a), Num::Float(b)) => Num::Float(a * b),
-        (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) * b),
-        (Num::Float(a), Num::Int(b)) => Num::Float(a * (*b as f64)),
-      }),
-  )
+  Ok(fold_nums(
+    values,
+    error_message_name,
+    Num::Int(0),
+    Num::multiply,
+  )?)
+}
+
+fn value_min(
+  values: QuootValueList,
+  error_message_name: &str,
+) -> Result<Num, QuootEvalError> {
+  Ok(fold_nums(
+    values,
+    error_message_name,
+    Num::Float(f64::INFINITY),
+    Num::min,
+  )?)
+}
+
+fn value_max(
+  values: QuootValueList,
+  error_message_name: &str,
+) -> Result<Num, QuootEvalError> {
+  Ok(fold_nums(
+    values,
+    error_message_name,
+    Num::Float(f64::NEG_INFINITY),
+    Num::max,
+  )?)
 }
 
 pub fn quoot_inc(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
@@ -95,7 +119,7 @@ pub fn quoot_subtract(
   let cloned_args = &mut args.clone();
   match cloned_args.pop_front() {
     None => Err(QuootEvalError::FunctionError(
-      "-: must supply at least one argument".to_owned(),
+      "-: need at least one argument".to_owned(),
     )),
     Some(value) => {
       let first_num = value.as_num("-")?;
@@ -122,7 +146,7 @@ pub fn quoot_divide(
   let cloned_args = &mut args.clone();
   match cloned_args.pop_front() {
     None => Err(QuootEvalError::FunctionError(
-      "/: must supply at least one argument".to_owned(),
+      "/: need at least 1 argument".to_owned(),
     )),
     Some(value) => {
       let first_num = value.as_num("/")?;
@@ -140,6 +164,24 @@ pub fn quoot_divide(
         }
       }))
     }
+  }
+}
+
+pub fn quoot_min(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => Err(QuootEvalError::FunctionError(
+      "min: need at least 1 argument".to_owned(),
+    )),
+    _ => Ok(QuootValue::Num(value_min(args, "min")?)),
+  }
+}
+
+pub fn quoot_max(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => Err(QuootEvalError::FunctionError(
+      "max: need at least 1 argument".to_owned(),
+    )),
+    _ => Ok(QuootValue::Num(value_max(args, "max")?)),
   }
 }
 
@@ -199,6 +241,24 @@ pub fn quoot_equal(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   }))
 }
 
+pub fn quoot_numerical_equal(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  Ok(QuootValue::Bool(match args.len() {
+    0 => true,
+    _ => {
+      let cloned_args = &mut args.clone();
+      let first = cloned_args.pop_front().unwrap().as_num("==")?;
+      while let Some(arg) = cloned_args.pop_front() {
+        if !Num::numerical_equal(first, &arg.as_num("==")?) {
+          return Ok(QuootValue::Bool(false));
+        }
+      }
+      true
+    }
+  }))
+}
+
 pub fn quoot_list_constructor(
   args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
@@ -228,7 +288,7 @@ pub fn quoot_count(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
 pub fn quoot_cons(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.front() {
     None => Err(QuootEvalError::FunctionError(
-      "cons: need at least 1 argument, got 0".to_string(),
+      "cons: need 1 or 2 arguments, got 0".to_string(),
     )),
     Some(element) => match args.len() {
       1 => Ok(QuootValue::List(QuootValueList::unit(element.clone()))),
@@ -281,7 +341,7 @@ pub fn quoot_get(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
         let n = args.get(1).unwrap().as_num("get")?.floor() as usize;
         match list.get(n) {
           None => Err(QuootEvalError::FunctionError(format!(
-            "get: can't get value at index {} in list of length {}",
+            "get: index out of bounds, index = {}, length = {}",
             n,
             list.len()
           ))),
@@ -303,7 +363,7 @@ pub fn quoot_get(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
 
 pub fn quoot_take(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    let n = max(0, args.front().unwrap().as_num("take")?.floor()) as usize;
+    let n = 0.max(args.front().unwrap().as_num("take")?.floor()) as usize;
     let list = args.get(1).unwrap().as_list("take")?;
     Ok(QuootValue::List(if n >= list.len() {
       list
@@ -320,13 +380,13 @@ pub fn quoot_take(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
 
 pub fn quoot_drop(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    let n = max(0, args.front().unwrap().as_num("take")?.floor()) as usize;
+    let n = 0.max(args.front().unwrap().as_num("drop")?.floor()) as usize;
     Ok(QuootValue::List(
-      args.get(1).unwrap().as_list("take")?.skip(n),
+      args.get(1).unwrap().as_list("drop")?.skip(n),
     ))
   } else {
     Err(QuootEvalError::FunctionError(format!(
-      "take: need 2 arguments, got {}",
+      "drop: need 2 arguments, got {}",
       args.len()
     )))
   }
@@ -397,7 +457,7 @@ pub fn quoot_identity(
     Ok(args.front().unwrap().clone())
   } else {
     Err(QuootEvalError::FunctionError(format!(
-      "identity: needed 1 argument, received {}",
+      "identity: need 1 argument, got {}",
       args.len()
     )))
   }
@@ -430,7 +490,7 @@ pub fn quoot_partial(
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
-      "partial needs at least 1 argument, got 0".to_owned(),
+      "partial: need at least 1 argument, got 0".to_owned(),
     )),
     1 => Ok(QuootValue::Fn(args.front().unwrap().as_fn("partial")?)),
     n => {
@@ -450,7 +510,7 @@ pub fn quoot_is_nil(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "nil? needs 1 argument, got {}",
+      "nil?: need 1 argument, got {}",
       n
     ))),
   }
@@ -465,7 +525,7 @@ pub fn quoot_is_bool(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "bool? needs 1 argument, got {}",
+      "bool?: need 1 argument, got {}",
       n
     ))),
   }
@@ -480,7 +540,7 @@ pub fn quoot_is_list(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "list? needs 1 argument, got {}",
+      "list?: need 1 argument, got {}",
       n
     ))),
   }
@@ -495,7 +555,7 @@ pub fn quoot_is_num(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "num? needs 1 argument, got {}",
+      "num?: need 1 argument, got {}",
       n
     ))),
   }
@@ -510,7 +570,7 @@ pub fn quoot_is_string(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "str? needs 1 argument, got {}",
+      "str?: need 1 argument, got {}",
       n
     ))),
   }
@@ -525,7 +585,7 @@ pub fn quoot_is_symbol(
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "symbol? needs 1 argument, got {}",
+      "symbol?: need 1 argument, got {}",
       n
     ))),
   }
@@ -538,7 +598,7 @@ pub fn quoot_is_fn(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       _ => false,
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "fn? needs 1 argument, got {}",
+      "fn?: need 1 argument, got {}",
       n
     ))),
   }
@@ -553,13 +613,13 @@ pub fn quoot_is_empty(
       QuootValue::List(list) => list.is_empty(),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
-          "empty? needs a collection, cannot check whether type {} is empty",
+          "empty?: cannot check whether type {} is empty",
           other.type_string()
         )))
       }
     })),
     n => Err(QuootEvalError::FunctionError(format!(
-      "empty? needs 1 argument, got {}",
+      "empty?: need 1 argument, got {}",
       n
     ))),
   }
@@ -575,13 +635,13 @@ pub fn quoot_first(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
-          "first cannot get the first element of a {}",
+          "first: cannot get the first element of type {}",
           other.type_string()
         )))
       }
     },
     n => Err(QuootEvalError::FunctionError(format!(
-      "first needs 1 argument, got {}",
+      "first: need 1 argument, got {}",
       n
     ))),
   }
@@ -597,13 +657,32 @@ pub fn quoot_last(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
-          "last cannot get the last element of a {}",
+          "last: cannot get the last element of type {}",
           other.type_string()
         )))
       }
     },
     n => Err(QuootEvalError::FunctionError(format!(
-      "last needs 1 argument, got {}",
+      "last: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_reverse(
+  args: QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => {
+      let list = &mut args.front().unwrap().as_list("reverse")?.clone();
+      let new_list = &mut QuootValueList::new();
+      while let Some(value) = list.pop_front() {
+        new_list.push_front(value);
+      }
+      Ok(QuootValue::List(new_list.to_owned()))
+    }
+    n => Err(QuootEvalError::FunctionError(format!(
+      "reverse: need 1 argument, got {}",
       n
     ))),
   }
@@ -613,7 +692,7 @@ pub fn quoot_bool(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(args.front().unwrap().as_bool())),
     n => Err(QuootEvalError::FunctionError(format!(
-      "bool needs 1 argument, got {}",
+      "bool: need 1 argument, got {}",
       n
     ))),
   }
@@ -625,7 +704,7 @@ pub fn quoot_int(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       args.front().unwrap().as_num("int")?.floor(),
     ))),
     n => Err(QuootEvalError::FunctionError(format!(
-      "int needs 1 argument, got {}",
+      "int: need 1 argument, got {}",
       n
     ))),
   }
@@ -634,13 +713,13 @@ pub fn quoot_int(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
 pub fn quoot_abs(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Num(
-      match args.front().unwrap().as_num("int")? {
+      match args.front().unwrap().as_num("abs")? {
         Num::Int(i) => Num::Int(i.abs()),
         Num::Float(f) => Num::Float(f.abs()),
       },
     )),
     n => Err(QuootEvalError::FunctionError(format!(
-      "int needs 1 argument, got {}",
+      "abs: need 1 argument, got {}",
       n
     ))),
   }

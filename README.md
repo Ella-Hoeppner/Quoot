@@ -14,9 +14,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 * implement as_fn for QuootValue::List
   * treat it as a call to nth
 * more standard library functions:
-  * reverse
-  * min, max
-  * \>, \<
+  * \>, \<, \>=, \<=
   * drop-last, take-last
   * filter (lazy)
   * repeat (lazy)
@@ -54,6 +52,10 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
     * will also eventually want a lazy/short-circuitable version of this
   * rest
   * butlast
+  * sort
+  * sort-by
+  * min-by
+  * max-by
 * should have functions for adding values to the front/back, with both possible argument orders
   * front, (value list) = cons
   * front, (list value) = conj
