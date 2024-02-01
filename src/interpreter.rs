@@ -8,19 +8,18 @@ use crate::library::quoot_dec;
 use crate::library::quoot_divide;
 use crate::library::quoot_drop;
 use crate::library::quoot_equal;
+use crate::library::quoot_get;
 use crate::library::quoot_identity;
 use crate::library::quoot_inc;
 use crate::library::quoot_list_constructor;
 use crate::library::quoot_map;
 use crate::library::quoot_modulo;
 use crate::library::quoot_multiply;
-use crate::library::quoot_nth;
 use crate::library::quoot_partial;
 use crate::library::quoot_quotient;
 use crate::library::quoot_range;
 use crate::library::quoot_subtract;
 use crate::library::quoot_take;
-use crate::library::quoot_transpose;
 use crate::model::Num;
 use crate::model::QuootEvalError;
 use crate::model::QuootFn;
@@ -57,8 +56,7 @@ impl Env {
     self.bind("count", QuootValue::Fn(&quoot_count));
     self.bind("cons", QuootValue::Fn(&quoot_cons));
     self.bind("concat", QuootValue::Fn(&quoot_concat));
-    self.bind("nth", QuootValue::Fn(&quoot_nth));
-    self.bind("transpose", QuootValue::Fn(&quoot_transpose));
+    self.bind("get", QuootValue::Fn(&quoot_get));
     self.bind("take", QuootValue::Fn(&quoot_take));
     self.bind("drop", QuootValue::Fn(&quoot_drop));
     self.bind("range", QuootValue::Fn(&quoot_range));
@@ -104,21 +102,17 @@ impl Interpreter {
     match value {
       QuootValue::Symbol(name) => self.get_binding(name),
       QuootValue::List(values) => {
-        let evaluated_values: QuootValueList = values
+        let evaluated_values: &mut QuootValueList = &mut values
           .iter()
           .map(|v| self.eval(v.to_owned()))
           .into_iter()
           .collect::<Result<QuootValueList, QuootEvalError>>()?;
-        match evaluated_values.first() {
+        match evaluated_values.pop_front() {
           None => Ok(QuootValue::List(QuootValueList::new())),
           Some(function) => match function {
-            QuootValue::Fn(f) => self.apply(
-              f.clone(),
-              match evaluated_values.drop_first() {
-                Some(list) => list,
-                None => QuootValueList::new(),
-              },
-            ),
+            QuootValue::Fn(f) => {
+              self.apply(f.clone(), evaluated_values.to_owned())
+            }
             _ => todo!(),
           },
         }

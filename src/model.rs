@@ -1,10 +1,10 @@
 use crate::parse::{QuootParseError, Sexp};
-use rpds::List;
+use imbl::Vector;
 use std::fmt;
 
-pub type QuootValueList = List<QuootValue>;
+pub type QuootValueList = Vector<QuootValue>;
 pub type QuootFn =
-  &'static dyn Fn(List<QuootValue>) -> Result<QuootValue, QuootEvalError>;
+  &'static dyn Fn(QuootValueList) -> Result<QuootValue, QuootEvalError>;
 
 #[derive(Clone, PartialEq)]
 pub enum Num {
@@ -25,7 +25,7 @@ impl Num {
 pub enum QuootValue {
   Nil,
   Bool(bool),
-  List(List<QuootValue>),
+  List(QuootValueList),
   Num(Num),
   String(String),
   Symbol(String),
@@ -61,11 +61,13 @@ impl QuootValue {
   }
   pub fn from_sexp(sexp: &Sexp) -> QuootValue {
     match sexp {
-      Sexp::List(sub_sexps) => QuootValue::List(
-        sub_sexps.iter().rev().fold(List::new(), |list, sub_sexp| {
-          list.push_front(QuootValue::from_sexp(sub_sexp))
-        }),
-      ),
+      Sexp::List(sub_sexps) => {
+        let v = &mut QuootValueList::new();
+        sub_sexps
+          .iter()
+          .for_each(|sub_sexp| v.push_back(QuootValue::from_sexp(sub_sexp)));
+        QuootValue::List(v.to_owned())
+      }
       Sexp::Leaf(token) => {
         if token == "nil" {
           QuootValue::Nil
@@ -106,9 +108,9 @@ impl QuootValue {
   pub fn as_list(
     &self,
     error_prefix: &str,
-  ) -> Result<List<QuootValue>, QuootEvalError> {
+  ) -> Result<QuootValueList, QuootEvalError> {
     match self {
-      QuootValue::Nil => Ok(List::new()),
+      QuootValue::Nil => Ok(QuootValueList::new()),
       QuootValue::List(list) => Ok(list.clone()),
       _ => {
         return Err(QuootEvalError::FunctionError(format!(
@@ -171,17 +173,14 @@ impl fmt::Display for QuootValue {
 }
 
 pub fn compose(f: QuootFn, g: QuootFn) -> QuootFn {
-  Box::leak(Box::new(move |args| f(List::new().push_front(g(args)?))))
+  Box::leak(Box::new(move |args| f(QuootValueList::unit(g(args)?))))
 }
 
-pub fn partial(f: QuootFn, prefix_args: List<QuootValue>) -> QuootFn {
-  let reversed_args = prefix_args.reverse();
+pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
   Box::leak(Box::new(move |args| {
-    f(reversed_args
-      .iter()
-      .fold(args, |expanded_args, prefix_arg| {
-        expanded_args.push_front(prefix_arg.to_owned())
-      }))
+    let cloned_args = &mut prefix_args.clone();
+    cloned_args.append(args);
+    f(cloned_args.to_owned())
   }))
 }
 

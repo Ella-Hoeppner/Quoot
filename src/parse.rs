@@ -150,10 +150,10 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
 
   let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
     (&['('], &[')'], None),
-    (&['['], &[']'], Some("#vector".to_string())),
-    (&['{'], &['}'], Some("#hashmap".to_string())),
-    (&['#', '['], &[']'], Some("#set".to_string())),
-    (&['#', '{'], &['}'], Some("#ordered-hashmap".to_string())),
+    (&['['], &[']'], Some("list".to_string())),
+    (&['{'], &['}'], Some("hashmap".to_string())),
+    (&['#', '['], &[']'], Some("hashset".to_string())),
+    (&['#', '{'], &['}'], Some("ordered-hashmap".to_string())),
   ];
   let prefixes: Vec<(&[char], String)> = vec![
     (&['\''], "quote".to_string()),
@@ -334,7 +334,7 @@ pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
 fn test_parse() {
   [
     ("()", Sexp::List(vec![])),
-    ("[]", Sexp::List(vec![Sexp::Leaf("vector".to_string())])),
+    ("[]", Sexp::List(vec![Sexp::Leaf("list".to_string())])),
     ("{}", Sexp::List(vec![Sexp::Leaf("hashmap".to_string())])),
     ("hello!", Sexp::Leaf("hello!".to_string())),
     (

@@ -1,33 +1,101 @@
 # Quoot
-WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL construction
+WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and code generation (for other languages)
 
 ## to do
 ### high priority
-* strongly consider switching to im crate rather than rpds
-  * the im Vector apparently allows pushing and popping on *both* the front and back in O(1), in the same data structure. Also has concatenation in O(log(n)) :O
-  * oh wait looks like im is unmaintained and might have some critical bugs...
-    * imbl is an alternative that is maintained and fixes those bugs, but removes the hash impl on hashmap :(
-      * I guess I can fork imbl and re-implement that impl myself?
+* make "true" and "false" symbols evaluate as bools
+* implement laziness
+  * need a new type like QuootValue::LazyList
 * implement arity-0 range, as a test for laziness
   * e.g should be able to do (take 5 (range)) and not infinitely loop
-  * probably need to add another value type like QuootValue::LazyList or smth to make this work
-* iterate
-* make map lazy
-  * as a test, (take 5 (map inc (range))) should work
-    * as should (map + (list 1 2 3) (range))
-  * probably need to reimplement transpose
-    * actually I guess having a "transpose" function is kinda silly, its the same as (| map list)
-      * so we can just get rid of the general "transpose" helper fn when reimplementing map, if that makes things easier
-* make concat lazy
-* When you try to call a list as a function, treat it as an invocation of nth
-  * should be able to handle this adding a clause to as_fn for lists
-  * will use similar behavior for vectors and hashmaps eventually
+* reimplement map
+  * should be lazy this time
+* make drop handle lazy lists properly
+* make concat lazy when either argument is lazy
+* implement as_fn for QuootValue::List
+  * treat it as a call to nth
+* more standard library functions:
+  * nil?
+  * bool?
+  * list?
+  * num?
+  * str?
+  * symbol?
+  * fn?
+  * empty?
+  * num
+  * int
+  * bool
+  * not=
+  * first
+  * last
+  * reverse
+  * abs
+  * min, max
+  * \>, \<
+  * drop-last, take-last
+  * filter (lazy)
+  * repeat (lazy)
+  * iterate (lazy)
+  * partition (lazy)
+  * interleave (lazy)
+  * get-back
+    * like nth but indexes go backwards from the end of the list
+  * some
+  * find
+    * like some, but the input fn should just return a bool, and it returns the argument that produced the first true from that fn
+  * flatten
+  * reduce
+  * subvec
+    * probably rename this
+      * sublist?
+      * maybe just sub?
+      * between?
+  * skip
+    * basically the opposite of subvec
+    * 2 args: list and an index, returns a list without the value at that index
+    * 3 args: list, start, end, returns a list skipping the values between start and end
+    * should work with lazy lists
+  * set
+    * like clojure's assoc, just shorter syntax
+      * not sure what to rename clojure's "set" to, maybe "hash-set"?
+        * a bit annoying to have this name collision, but "map" is already overloaded and doesn't refer to the data structure either so not having "set" be a constructor/caster doesn't seem like a big deal
+  * update
+  * and, or, not, xor
+    * for these, should add QuootValue.as_bool to act as a truthiness checker
+      * should do the clj thing where these return the actual value, not the casted truth value
+        * eg (or nil 5) should give 5
+    * at some point maybe these should be lazy/short-circuitable? probably need to wait for macros for that to be possible tho
+  * if
+    * will also eventually want a lazy/short-circuitable version of this
+  * rest
+  * butlast
+* should have functions for adding values to the front/back, with both possible argument orders
+  * front, (value list) = cons
+  * front, (list value) = conj
+  * back, (value list) = ?
+  * back, (list value) = ?
+  * tbh I don't really love the names cons or conj...
+* Use &str rather than String for string objects
+* str function
+  * also substr
+  * make get return a char
+    * should we have char as it's own type or just treat them as one-character strings?
 * maybe get rid of Sexp in parser, just use a subset of QuootValue?
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
   * probably don't need to start the expression_stack with an empty vector?
 * use &str in place of &[char] in parser
   * should be doable with char_indices
-* add vectors, hashmaps, and sets
+* fork imbl
+  * impl Hash on Hashmap
+* QuootValue::Hashmap
+  * hashmap constructor fn
+  * implement get, set cases
+  * merge
+  * maybe make skip work on hashmaps too?
+    * could take an arbitrary number of args for this case
+  * QuootValue::Hashmap.as_fn
+* add hashmaps and sets
   * add constructors fns for the corresponding names to the default environment
   * add `get` to the default environment
 * lambdas
@@ -36,7 +104,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
 ### low priority
 * Use rustyline crate for a nicer repl
 * in parser, use character indexes to give more descriptive parser errors
-* add ordered hashmaps
+* ordered hashmaps
   * I guess these might just have to consist of a hashmap and a list/vector?
 * figure out how to handle custom delimiter/prefix introduction
   * If it happens at the parser stage it wouldn't very be ergonomic because it couldn't be included in macros
@@ -57,3 +125,4 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming and DSL const
     * Allow macros to somehow be tagged with which delimiters/prefixes apply to the forms enclosed inside them
       * At the reader stage, when one of these tagged macros is encountered, apply those delimiters/prefixes until that macros closes
         * This will happen at the reader stage so it will be before any kind of macroexpansion, but I think that's fine. Just means that the reader will need to be aware of the declared macros, which seems totally doable.
+* think about how transducers might fit in
