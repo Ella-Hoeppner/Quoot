@@ -3,18 +3,29 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 
 ## to do
 ### high priority
-* implement take and drop for lazy lists
-  * I kinda feel like QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
+* switch to a vau-calculus-like evaluation model
+  * all built-in functions should accept un-evaluated arguments, and call eval on them within the function definition
+    * also means I'll need to pass an environment around to the functions
+* implement list functions take and drop for lazy lists
+  * QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
     * as_list should return this, rather than just a List
-* reimplement map
-  * should be lazy this time
-* make drop handle lazy lists properly
-* make concat lazy when either argument is lazy
+  * functions to change:
+    * take
+    * drop 
+    * first
+    * last
+    * rest
+    * butlast
+    * cons
+    * concat
+    * list?
+  * need to think carefully for each of these about whether or not it should be lazy, potentially conditional on laziness/strictness of the inputs
 * implement as_fn for QuootValue::List
   * treat it as a call to nth
 * more standard library functions:
   * \>, \<, \>=, \<=
   * drop-last, take-last
+  * map (lazy)
   * filter (lazy)
   * repeat (lazy)
   * iterate (lazy)
@@ -55,11 +66,13 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
   * min-by
   * max-by
 * should have functions for adding values to the front/back, with both possible argument orders
-  * front, (value list) = cons
-  * front, (list value) = conj
-  * back, (value list) = ?
-  * back, (list value) = ?
+  * cases:
+    * front, (list value) = conj
+    * back, (list value) = ?
+    * front, (value list) = cons
+    * back, (value list) = ?
   * tbh I don't really love the names cons or conj...
+  * maybe pushf, pushb, fpush, and bpush, respectively?
 * Use &str rather than String for string objects
 * str function
   * also substr

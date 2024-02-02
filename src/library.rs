@@ -1,5 +1,6 @@
 use crate::model::compose;
 use crate::model::partial;
+use crate::model::Bindings;
 use crate::model::LazyQuootValueList;
 use crate::model::Num;
 use crate::model::QuootEvalError;
@@ -43,7 +44,7 @@ fn value_product(
   Ok(fold_nums(
     values,
     error_message_name,
-    Num::Int(0),
+    Num::Int(1),
     Num::multiply,
   )?)
 }
@@ -460,17 +461,6 @@ pub fn quoot_apply(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   }
 }
 
-pub fn quoot_map(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
-  if args.len() < 2 {
-    Err(QuootEvalError::FunctionError(format!(
-      "map: need at least 2 arguments, got {}",
-      args.len()
-    )))
-  } else {
-    todo!()
-  }
-}
-
 pub fn quoot_identity(
   args: QuootValueList,
 ) -> Result<QuootValue, QuootEvalError> {
@@ -656,7 +646,7 @@ pub fn quoot_first(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
-          "first: cannot get the first element of type {}",
+          "first: cannot get the first element of type <{}>",
           other.type_string()
         )))
       }
@@ -678,7 +668,7 @@ pub fn quoot_last(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
-          "last: cannot get the last element of type {}",
+          "last: cannot get the last element of type <{}>",
           other.type_string()
         )))
       }
@@ -744,4 +734,53 @@ pub fn quoot_abs(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       n
     ))),
   }
+}
+
+pub fn default_bindings() -> Bindings {
+  let bindings = &mut Bindings::new();
+  bindings.insert(
+    "TAU".to_owned(),
+    QuootValue::Num(Num::Float(6.283185307179586)),
+  );
+  bindings.insert("inc".to_owned(), QuootValue::Fn(&quoot_inc));
+  bindings.insert("=".to_owned(), QuootValue::Fn(&quoot_equal));
+  bindings.insert("==".to_owned(), QuootValue::Fn(&quoot_numerical_equal));
+  bindings.insert("dec".to_owned(), QuootValue::Fn(&quoot_dec));
+  bindings.insert("+".to_owned(), QuootValue::Fn(&quoot_add));
+  bindings.insert("-".to_owned(), QuootValue::Fn(&quoot_subtract));
+  bindings.insert("*".to_owned(), QuootValue::Fn(&quoot_multiply));
+  bindings.insert("/".to_owned(), QuootValue::Fn(&quoot_divide));
+  bindings.insert("min".to_owned(), QuootValue::Fn(&quoot_min));
+  bindings.insert("max".to_owned(), QuootValue::Fn(&quoot_max));
+  bindings.insert("mod".to_owned(), QuootValue::Fn(&quoot_modulo));
+  bindings.insert("quot".to_owned(), QuootValue::Fn(&quoot_quotient));
+  bindings.insert("list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
+  bindings.insert("count".to_owned(), QuootValue::Fn(&quoot_count));
+  bindings.insert("cons".to_owned(), QuootValue::Fn(&quoot_cons));
+  bindings.insert("concat".to_owned(), QuootValue::Fn(&quoot_concat));
+  bindings.insert("get".to_owned(), QuootValue::Fn(&quoot_get));
+  bindings.insert("take".to_owned(), QuootValue::Fn(&quoot_take));
+  bindings.insert("drop".to_owned(), QuootValue::Fn(&quoot_drop));
+  bindings.insert("range".to_owned(), QuootValue::Fn(&quoot_range));
+  bindings.insert("identity".to_owned(), QuootValue::Fn(&quoot_identity));
+  bindings.insert("apply".to_owned(), QuootValue::Fn(&quoot_apply));
+  bindings.insert("partial".to_owned(), QuootValue::Fn(&quoot_partial));
+  bindings.insert("|".to_owned(), QuootValue::Fn(&quoot_partial));
+  bindings.insert("compose".to_owned(), QuootValue::Fn(&quoot_compose));
+  bindings.insert(".".to_owned(), QuootValue::Fn(&quoot_compose));
+  bindings.insert("nil?".to_owned(), QuootValue::Fn(&quoot_is_nil));
+  bindings.insert("bool?".to_owned(), QuootValue::Fn(&quoot_is_bool));
+  bindings.insert("list?".to_owned(), QuootValue::Fn(&quoot_is_list));
+  bindings.insert("num?".to_owned(), QuootValue::Fn(&quoot_is_num));
+  bindings.insert("str?".to_owned(), QuootValue::Fn(&quoot_is_string));
+  bindings.insert("symbol?".to_owned(), QuootValue::Fn(&quoot_is_symbol));
+  bindings.insert("fn?".to_owned(), QuootValue::Fn(&quoot_is_fn));
+  bindings.insert("empty?".to_owned(), QuootValue::Fn(&quoot_is_empty));
+  bindings.insert("bool".to_owned(), QuootValue::Fn(&quoot_bool));
+  bindings.insert("int".to_owned(), QuootValue::Fn(&quoot_int));
+  bindings.insert("abs".to_owned(), QuootValue::Fn(&quoot_abs));
+  bindings.insert("first".to_owned(), QuootValue::Fn(&quoot_first));
+  bindings.insert("last".to_owned(), QuootValue::Fn(&quoot_last));
+  bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));
+  bindings.to_owned()
 }

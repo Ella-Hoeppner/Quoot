@@ -1,115 +1,21 @@
-use crate::library::quoot_abs;
-use crate::library::quoot_add;
-use crate::library::quoot_apply;
-use crate::library::quoot_bool;
-use crate::library::quoot_compose;
-use crate::library::quoot_concat;
-use crate::library::quoot_cons;
-use crate::library::quoot_count;
-use crate::library::quoot_dec;
-use crate::library::quoot_divide;
-use crate::library::quoot_drop;
-use crate::library::quoot_equal;
-use crate::library::quoot_first;
-use crate::library::quoot_get;
-use crate::library::quoot_identity;
-use crate::library::quoot_inc;
-use crate::library::quoot_int;
-use crate::library::quoot_is_bool;
-use crate::library::quoot_is_empty;
-use crate::library::quoot_is_fn;
-use crate::library::quoot_is_list;
-use crate::library::quoot_is_nil;
-use crate::library::quoot_is_num;
-use crate::library::quoot_is_string;
-use crate::library::quoot_is_symbol;
-use crate::library::quoot_last;
-use crate::library::quoot_list_constructor;
-use crate::library::quoot_map;
-use crate::library::quoot_max;
-use crate::library::quoot_min;
-use crate::library::quoot_modulo;
-use crate::library::quoot_multiply;
-use crate::library::quoot_numerical_equal;
-use crate::library::quoot_partial;
-use crate::library::quoot_quotient;
-use crate::library::quoot_range;
-use crate::library::quoot_reverse;
-use crate::library::quoot_subtract;
-use crate::library::quoot_take;
-use crate::model::Num;
+use crate::library::default_bindings;
+use crate::model::Env;
 use crate::model::QuootEvalError;
 use crate::model::QuootFn;
 use crate::model::QuootValue;
 use crate::model::QuootValueList;
 use crate::parse::parse;
-use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 
-#[derive(Default, Clone)]
-struct Env {
-  bindings: HashMap<String, QuootValue>,
-}
-impl Env {
-  pub fn bind(&mut self, name: &str, value: QuootValue) {
-    self.bindings.insert(name.to_owned(), value);
-  }
-  pub fn get(&self, name: &str) -> Option<&QuootValue> {
-    self.bindings.get(name).map(|e| e)
-  }
-  pub fn add_standard_bindings(&mut self) {
-    self.bind("TAU", QuootValue::Num(Num::Float(6.283185307179586)));
-    self.bind("=", QuootValue::Fn(&quoot_equal));
-    self.bind("==", QuootValue::Fn(&quoot_numerical_equal));
-    self.bind("inc", QuootValue::Fn(&quoot_inc));
-    self.bind("dec", QuootValue::Fn(&quoot_dec));
-    self.bind("+", QuootValue::Fn(&quoot_add));
-    self.bind("-", QuootValue::Fn(&quoot_subtract));
-    self.bind("*", QuootValue::Fn(&quoot_multiply));
-    self.bind("/", QuootValue::Fn(&quoot_divide));
-    self.bind("min", QuootValue::Fn(&quoot_min));
-    self.bind("max", QuootValue::Fn(&quoot_max));
-    self.bind("mod", QuootValue::Fn(&quoot_modulo));
-    self.bind("quot", QuootValue::Fn(&quoot_quotient));
-    self.bind("list", QuootValue::Fn(&quoot_list_constructor));
-    self.bind("count", QuootValue::Fn(&quoot_count));
-    self.bind("cons", QuootValue::Fn(&quoot_cons));
-    self.bind("concat", QuootValue::Fn(&quoot_concat));
-    self.bind("get", QuootValue::Fn(&quoot_get));
-    self.bind("take", QuootValue::Fn(&quoot_take));
-    self.bind("drop", QuootValue::Fn(&quoot_drop));
-    self.bind("range", QuootValue::Fn(&quoot_range));
-    self.bind("identity", QuootValue::Fn(&quoot_identity));
-    self.bind("apply", QuootValue::Fn(&quoot_apply));
-    self.bind("partial", QuootValue::Fn(&quoot_partial));
-    self.bind("|", QuootValue::Fn(&quoot_partial));
-    self.bind("compose", QuootValue::Fn(&quoot_compose));
-    self.bind(".", QuootValue::Fn(&quoot_compose));
-    self.bind("map", QuootValue::Fn(&quoot_map));
-    self.bind("nil?", QuootValue::Fn(&quoot_is_nil));
-    self.bind("bool?", QuootValue::Fn(&quoot_is_bool));
-    self.bind("list?", QuootValue::Fn(&quoot_is_list));
-    self.bind("num?", QuootValue::Fn(&quoot_is_num));
-    self.bind("str?", QuootValue::Fn(&quoot_is_string));
-    self.bind("symbol?", QuootValue::Fn(&quoot_is_symbol));
-    self.bind("fn?", QuootValue::Fn(&quoot_is_fn));
-    self.bind("empty?", QuootValue::Fn(&quoot_is_empty));
-    self.bind("bool", QuootValue::Fn(&quoot_bool));
-    self.bind("int", QuootValue::Fn(&quoot_int));
-    self.bind("abs", QuootValue::Fn(&quoot_abs));
-    self.bind("first", QuootValue::Fn(&quoot_first));
-    self.bind("last", QuootValue::Fn(&quoot_last));
-    self.bind("reverse", QuootValue::Fn(&quoot_reverse));
-  }
-}
-
-#[derive(Default)]
 struct Interpreter {
   env: Env,
 }
 
 impl Interpreter {
+  pub fn new(root_env: Env) -> Interpreter {
+    Interpreter { env: root_env }
+  }
   pub fn add_binding(&mut self, name: String, value: QuootValue) {
     self.env.bind(&name, value)
   }
@@ -144,10 +50,10 @@ impl Interpreter {
         match evaluated_values.pop_front() {
           None => Ok(QuootValue::List(QuootValueList::new())),
           Some(function) => match function {
-            QuootValue::Fn(f) => {
-              self.apply(f.clone(), evaluated_values.to_owned())
+            QuootValue::Fn(f) => self.apply(f, evaluated_values.to_owned()),
+            other => {
+              Err(QuootEvalError::AppliedUnapplicableError(other.to_string()))
             }
-            _ => todo!(),
           },
         }
       }
@@ -155,9 +61,7 @@ impl Interpreter {
     }
   }
   pub fn new_with_standard_env() -> Interpreter {
-    let mut interpreter = Interpreter::default();
-    interpreter.env.add_standard_bindings();
-    interpreter
+    Interpreter::new(Env::from_bindings(default_bindings()))
   }
 }
 

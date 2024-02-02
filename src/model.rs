@@ -1,14 +1,31 @@
 use crate::parse::{QuootParseError, Sexp};
 use imbl::Vector;
-use std::fmt;
+use std::{collections::HashMap, fmt};
+
+pub type Bindings = HashMap<String, QuootValue>;
 
 #[derive(Debug)]
 pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
-  AppliedUnapplicableError,
+  AppliedUnapplicableError(String),
   FunctionError(String),
-  OutOfBoundsError(usize, usize),
+}
+
+#[derive(Default, Clone)]
+pub struct Env {
+  bindings: Bindings,
+}
+impl Env {
+  pub fn from_bindings(bindings: Bindings) -> Env {
+    Env { bindings }
+  }
+  pub fn bind(&mut self, name: &str, value: QuootValue) {
+    self.bindings.insert(name.to_owned(), value);
+  }
+  pub fn get(&self, name: &str) -> Option<&QuootValue> {
+    self.bindings.get(name).map(|e| e)
+  }
 }
 
 pub type QuootValueList = Vector<QuootValue>;
