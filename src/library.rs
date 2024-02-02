@@ -1,12 +1,7 @@
-use crate::model::compose;
-use crate::model::partial;
-use crate::model::Bindings;
-use crate::model::LazyQuootValueList;
-use crate::model::Num;
-use crate::model::QuootEvalError;
-use crate::model::QuootFn;
-use crate::model::QuootValue;
-use crate::model::QuootValueList;
+use crate::model::{
+  compose, eval, partial, Bindings, Env, LazyQuootValueList, Num,
+  QuootEvalError, QuootFn, QuootValue, QuootValueList,
+};
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
   values: QuootValueList,
@@ -73,10 +68,13 @@ fn value_max(
   )?)
 }
 
-pub fn quoot_inc(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+pub fn quoot_inc(
+  env: &Env,
+  args: &QuootValueList,
+) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
-      match args.front().unwrap().as_num("inc")? {
+      match eval(env, args.front().unwrap())?.as_num("inc")? {
         Num::Int(i) => Num::Int(i + 1),
         Num::Float(f) => Num::Float(f + 1.0),
       },
@@ -89,7 +87,7 @@ pub fn quoot_inc(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   }
 }
 
-pub fn quoot_dec(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
+/*pub fn quoot_dec(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
       match args.front().unwrap().as_num("inc")? {
@@ -734,7 +732,7 @@ pub fn quoot_abs(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       n
     ))),
   }
-}
+}*/
 
 pub fn default_bindings() -> Bindings {
   let bindings = &mut Bindings::new();
@@ -743,7 +741,7 @@ pub fn default_bindings() -> Bindings {
     QuootValue::Num(Num::Float(6.283185307179586)),
   );
   bindings.insert("inc".to_owned(), QuootValue::Fn(&quoot_inc));
-  bindings.insert("=".to_owned(), QuootValue::Fn(&quoot_equal));
+  /*bindings.insert("=".to_owned(), QuootValue::Fn(&quoot_equal));
   bindings.insert("==".to_owned(), QuootValue::Fn(&quoot_numerical_equal));
   bindings.insert("dec".to_owned(), QuootValue::Fn(&quoot_dec));
   bindings.insert("+".to_owned(), QuootValue::Fn(&quoot_add));
@@ -781,6 +779,6 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("abs".to_owned(), QuootValue::Fn(&quoot_abs));
   bindings.insert("first".to_owned(), QuootValue::Fn(&quoot_first));
   bindings.insert("last".to_owned(), QuootValue::Fn(&quoot_last));
-  bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));
+  bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));*/
   bindings.to_owned()
 }

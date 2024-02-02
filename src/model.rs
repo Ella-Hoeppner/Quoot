@@ -23,14 +23,17 @@ impl Env {
   pub fn bind(&mut self, name: &str, value: QuootValue) {
     self.bindings.insert(name.to_owned(), value);
   }
-  pub fn get(&self, name: &str) -> Option<&QuootValue> {
-    self.bindings.get(name).map(|e| e)
+  pub fn get(&self, name: &str) -> Result<&QuootValue, QuootEvalError> {
+    self
+      .bindings
+      .get(name)
+      .ok_or(QuootEvalError::UnboundSymbolError(name.to_owned()))
   }
 }
 
 pub type QuootValueList = Vector<QuootValue>;
 pub type QuootFn =
-  &'static dyn Fn(QuootValueList) -> Result<QuootValue, QuootEvalError>;
+  &'static dyn Fn(&Env, &QuootValueList) -> Result<QuootValue, QuootEvalError>;
 pub type QuootRealizerFn =
   &'static dyn Fn(QuootValueList) -> Result<Option<QuootValue>, QuootEvalError>;
 
@@ -356,13 +359,34 @@ impl fmt::Display for QuootValue {
 }
 
 pub fn compose(f: QuootFn, g: QuootFn) -> QuootFn {
-  Box::leak(Box::new(move |args| f(QuootValueList::unit(g(args)?))))
+  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
+    f(env, &QuootValueList::unit(g(env, args)?))
+  }))
 }
 
 pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
-  Box::leak(Box::new(move |args| {
+  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
     let cloned_args = &mut prefix_args.clone();
-    cloned_args.append(args);
-    f(cloned_args.to_owned())
+    cloned_args.append(args.to_owned());
+    f(env, cloned_args)
   }))
+}
+
+pub fn eval(
+  env: &Env,
+  value: &QuootValue,
+) -> Result<QuootValue, QuootEvalError> {
+  match value {
+    QuootValue::Symbol(name) => env.get(&name).map(|v| v.clone()),
+    QuootValue::List(values) => match values.front() {
+      None => Ok(QuootValue::List(QuootValueList::new())),
+      Some(first_value) => {
+        let f = eval(env, first_value)?.as_fn("eval")?;
+        let cloned_values = &mut values.clone();
+        cloned_values.pop_front();
+        f(env, cloned_values)
+      }
+    },
+    other => Ok(other.to_owned()),
+  }
 }

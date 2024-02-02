@@ -3,9 +3,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 
 ## to do
 ### high priority
-* switch to a vau-calculus-like evaluation model
-  * all built-in functions should accept un-evaluated arguments, and call eval on them within the function definition
-    * also means I'll need to pass an environment around to the functions
+* update standard functions for new evaluation model
 * implement list functions take and drop for lazy lists
   * QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
     * as_list should return this, rather than just a List
@@ -52,6 +50,7 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
     * like clojure's assoc, just shorter syntax
       * not sure what to rename clojure's "set" to, maybe "hash-set"?
         * a bit annoying to have this name collision, but "map" is already overloaded and doesn't refer to the data structure either so not having "set" be a constructor/caster doesn't seem like a big deal
+    * maybe called "with" instead, set sounds side-effectful
   * update
   * and, or, not, xor
     * should do the clj thing where these return the actual value, not the casted truth value
