@@ -1,5 +1,6 @@
 use crate::model::compose;
 use crate::model::partial;
+use crate::model::LazyQuootValueList;
 use crate::model::Num;
 use crate::model::QuootEvalError;
 use crate::model::QuootFn;
@@ -272,6 +273,13 @@ pub fn quoot_count(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       QuootValue::List(list) => {
         Ok(QuootValue::Num(Num::Int(list.len() as i64)))
       }
+      QuootValue::LazyList(list) => {
+        let cloned_list = &mut list.clone();
+        let realized_list = cloned_list.fully_realize()?;
+        Ok(QuootValue::Num(Num::Int(
+          realized_list.realized_len() as i64
+        )))
+      }
       v => Err(QuootEvalError::FunctionError(format!(
         "count: can't count type <{}>",
         v.type_string()
@@ -341,9 +349,20 @@ pub fn quoot_get(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
         let n = args.get(1).unwrap().as_num("get")?.floor() as usize;
         match list.get(n) {
           None => Err(QuootEvalError::FunctionError(format!(
-            "get: index out of bounds, index = {}, length = {}",
+            "get: index {} is out of bounds, list has length {}",
             n,
             list.len()
+          ))),
+          Some(value) => Ok(value.to_owned()),
+        }
+      }
+      QuootValue::LazyList(list) => {
+        let n = args.get(1).unwrap().as_num("get")?.floor() as usize;
+        match list.clone().get(n)? {
+          None => Err(QuootEvalError::FunctionError(format!(
+            "get: index {} is out of bounds, list has length {}",
+            n,
+            list.realized_len()
           ))),
           Some(value) => Ok(value.to_owned()),
         }
@@ -394,7 +413,9 @@ pub fn quoot_drop(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
 
 pub fn quoot_range(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    0 => todo!(),
+    0 => Ok(QuootValue::LazyList(LazyQuootValueList::new(&|values| {
+      Ok(Some(QuootValue::Num(Num::Int(values.len() as i64))))
+    }))),
     1 => {
       let n = args.front().unwrap().as_num("range")?.floor();
       let list = &mut QuootValueList::new();
@@ -404,7 +425,7 @@ pub fn quoot_range(args: QuootValueList) -> Result<QuootValue, QuootEvalError> {
       Ok(QuootValue::List(list.to_owned()))
     }
     n => Err(QuootEvalError::FunctionError(format!(
-      "range: need 1 or 2 arguments, got {}",
+      "range: need 0 or 1 arguments, got {}",
       n
     ))),
   }

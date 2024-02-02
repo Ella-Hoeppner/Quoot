@@ -3,10 +3,9 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
 
 ## to do
 ### high priority
-* implement laziness
-  * need a new type like QuootValue::LazyList
-* implement arity-0 range, as a test for laziness
-  * e.g should be able to do (take 5 (range)) and not infinitely loop
+* implement take and drop for lazy lists
+  * I kinda feel like QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
+    * as_list should return this, rather than just a List
 * reimplement map
   * should be lazy this time
 * make drop handle lazy lists properly
@@ -44,9 +43,8 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
         * a bit annoying to have this name collision, but "map" is already overloaded and doesn't refer to the data structure either so not having "set" be a constructor/caster doesn't seem like a big deal
   * update
   * and, or, not, xor
-    * for these, should add QuootValue.as_bool to act as a truthiness checker
-      * should do the clj thing where these return the actual value, not the casted truth value
-        * eg (or nil 5) should give 5
+    * should do the clj thing where these return the actual value, not the casted truth value
+      * eg (or nil 5) should give 5
     * at some point maybe these should be lazy/short-circuitable? probably need to wait for macros for that to be possible tho
   * if
     * will also eventually want a lazy/short-circuitable version of this
@@ -86,7 +84,15 @@ WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and co
   * add `get` to the default environment
   * map? or hashmap? function
 * lambdas
+* once lambdas are implemented, translate my cljs kd-tree implementation to Quoot
+  * run benchmarks for cljs, clj, and Quoot
+* let forms
 * quoting
+* unquoting
+  * just inside quotes for now, don't worry about top-level unquoting yet
+* eval
+  * this will involve implementing the ability to spin up a new interpreter arbitrarily, which will also be useful later for top-level unquoting
+* top-level unquoting
 
 ### low priority
 * Use rustyline crate for a nicer repl

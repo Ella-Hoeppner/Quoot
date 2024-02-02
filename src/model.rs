@@ -2,9 +2,20 @@ use crate::parse::{QuootParseError, Sexp};
 use imbl::Vector;
 use std::fmt;
 
+#[derive(Debug)]
+pub enum QuootEvalError {
+  Parse(QuootParseError),
+  UnboundSymbolError(String),
+  AppliedUnapplicableError,
+  FunctionError(String),
+  OutOfBoundsError(usize, usize),
+}
+
 pub type QuootValueList = Vector<QuootValue>;
 pub type QuootFn =
   &'static dyn Fn(QuootValueList) -> Result<QuootValue, QuootEvalError>;
+pub type QuootRealizerFn =
+  &'static dyn Fn(QuootValueList) -> Result<Option<QuootValue>, QuootEvalError>;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Num {
@@ -93,14 +104,86 @@ impl Num {
 }
 
 #[derive(Clone)]
+pub struct LazyQuootValueList {
+  values: QuootValueList,
+  fully_realized: bool,
+  realizer: &'static dyn Fn(
+    QuootValueList,
+  ) -> Result<Option<QuootValue>, QuootEvalError>,
+}
+
+impl LazyQuootValueList {
+  pub fn new(realizer: QuootRealizerFn) -> LazyQuootValueList {
+    LazyQuootValueList {
+      values: QuootValueList::new(),
+      fully_realized: false,
+      realizer,
+    }
+  }
+  pub fn realized_len(&self) -> usize {
+    self.values.len()
+  }
+  pub fn fully_realized(&self) -> bool {
+    self.fully_realized
+  }
+  fn realize(
+    &mut self,
+  ) -> Result<Option<&mut LazyQuootValueList>, QuootEvalError> {
+    if self.fully_realized {
+      return Ok(None);
+    }
+    let new_value = (self.realizer)(self.values.clone())?;
+    match new_value {
+      None => {
+        self.fully_realized = true;
+        Ok(None)
+      }
+      Some(value) => {
+        self.values.push_back(value);
+        Ok(Some(self))
+      }
+    }
+  }
+  fn realize_to(
+    &mut self,
+    length: usize,
+  ) -> Result<Option<&mut LazyQuootValueList>, QuootEvalError> {
+    while self.values.len() < length {
+      if self.realize()?.is_none() {
+        return Ok(None);
+      }
+    }
+    Ok(Some(self))
+  }
+  pub fn fully_realize(
+    &mut self,
+  ) -> Result<&mut LazyQuootValueList, QuootEvalError> {
+    loop {
+      if self.realize()?.is_none() {
+        break;
+      };
+    }
+    Ok(self)
+  }
+  pub fn get(
+    &mut self,
+    index: usize,
+  ) -> Result<Option<QuootValue>, QuootEvalError> {
+    self.realize_to(index + 1)?;
+    Ok(self.values.get(index).map(|a| a.to_owned()))
+  }
+}
+
+#[derive(Clone)]
 pub enum QuootValue {
   Nil,
   Bool(bool),
-  List(QuootValueList),
   Num(Num),
   String(String),
   Symbol(String),
   Fn(QuootFn),
+  List(QuootValueList),
+  LazyList(LazyQuootValueList),
 }
 
 impl PartialEq for QuootValue {
@@ -163,6 +246,7 @@ impl QuootValue {
       QuootValue::Symbol(_) => "Symbol",
       QuootValue::List(_) => "List",
       QuootValue::Fn(_) => "Function",
+      QuootValue::LazyList(_) => "LazyList",
     }
     .to_string()
   }
@@ -244,10 +328,11 @@ impl fmt::Display for QuootValue {
         fmt.write_str(")")?;
       }
       QuootValue::Nil => fmt.write_str("nil")?,
-      QuootValue::Fn(_) => fmt.write_str("<Function>")?,
       QuootValue::Bool(b) => {
         fmt.write_str(if *b { "true" } else { "false" })?
       }
+      QuootValue::Fn(_) => fmt.write_str("<Function>")?,
+      QuootValue::LazyList(_) => fmt.write_str("<LazyList>")?,
     }
     Ok(())
   }
@@ -263,12 +348,4 @@ pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
     cloned_args.append(args);
     f(cloned_args.to_owned())
   }))
-}
-
-#[derive(Debug)]
-pub enum QuootEvalError {
-  Parse(QuootParseError),
-  UnboundSymbolError(String),
-  AppliedUnapplicableError,
-  FunctionError(String),
 }
