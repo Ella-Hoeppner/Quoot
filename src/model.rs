@@ -1,6 +1,6 @@
 use crate::parse::{QuootParseError, Sexp};
-use imbl::Vector;
-use std::{collections::HashMap, fmt};
+use imbl::{HashMap, Vector};
+use std::fmt;
 
 pub type Bindings = HashMap<String, QuootValue>;
 
