@@ -2,7 +2,7 @@ use crate::parse::{QuootParseError, Sexp};
 use imbl::{HashMap, Vector};
 use std::{
   fmt,
-  sync::{Arc, Mutex},
+  sync::{Arc, RwLock},
 };
 
 #[derive(Clone)]
@@ -365,7 +365,7 @@ impl Num {
 
 #[derive(Clone)]
 pub struct QuootLazyList {
-  values: Arc<Mutex<QuootStrictList>>,
+  values: Arc<RwLock<QuootStrictList>>,
   realizer: &'static dyn Fn(
     QuootStrictList,
   ) -> Result<Option<QuootValue>, QuootEvalError>,
@@ -374,16 +374,16 @@ pub struct QuootLazyList {
 impl QuootLazyList {
   pub fn new(realizer: QuootRealizer) -> QuootLazyList {
     QuootLazyList {
-      values: Arc::new(Mutex::new(QuootStrictList::new())),
+      values: Arc::new(RwLock::new(QuootStrictList::new())),
       realizer,
     }
   }
   pub fn realized_len(&self) -> usize {
-    (*(*self.values).lock().unwrap()).len()
+    (*(*self.values).read().unwrap()).len()
   }
   fn realize(&self) -> Result<Option<&QuootLazyList>, QuootEvalError> {
     println!("realizing!!!");
-    let lock = &mut (*self.values).lock().unwrap();
+    let lock = &mut (*self.values).write().unwrap();
     let new_value = (self.realizer)(lock.clone())?;
     match new_value {
       None => Ok(None),
@@ -399,7 +399,7 @@ impl QuootLazyList {
   ) -> Result<Option<&QuootLazyList>, QuootEvalError> {
     loop {
       {
-        let lock = self.values.lock().unwrap();
+        let lock = self.values.read().unwrap();
         if (*lock).len() >= length {
           break;
         }
@@ -419,11 +419,11 @@ impl QuootLazyList {
     index: usize,
   ) -> Result<Option<QuootValue>, QuootEvalError> {
     self.realize_to(index + 1)?;
-    Ok(self.values.lock().unwrap().get(index).map(|e| e.clone()))
+    Ok(self.values.read().unwrap().get(index).map(|e| e.clone()))
   }
   pub fn to_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
     self.fully_realize()?;
-    Ok(self.values.lock().unwrap().clone())
+    Ok(self.values.read().unwrap().clone())
   }
 }
 
