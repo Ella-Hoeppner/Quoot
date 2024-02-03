@@ -461,29 +461,8 @@ pub fn quoot_get(
   if args.len() == 2 {
     match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Nil),
-      QuootValue::List(QuootList::Strict(list)) => {
-        let n =
-          eval(env, args.get(1).unwrap())?.as_num("get")?.floor() as usize;
-        match list.get(n) {
-          None => Err(QuootEvalError::FunctionError(format!(
-            "get: index {} is out of bounds, list has length {}",
-            n,
-            list.len()
-          ))),
-          Some(value) => Ok(value.to_owned()),
-        }
-      }
-      QuootValue::List(QuootList::Lazy(list)) => {
-        let n =
-          eval(env, args.get(1).unwrap())?.as_num("get")?.floor() as usize;
-        match list.clone().get(n)? {
-          None => Err(QuootEvalError::FunctionError(format!(
-            "get: index {} is out of bounds, list has length {}",
-            n,
-            list.realized_len()
-          ))),
-          Some(value) => Ok(value.to_owned()),
-        }
+      QuootValue::List(list) => {
+        Ok(list.get(eval(env, args.get(1).unwrap())?.as_num("get")?.floor())?)
       }
       other => Err(QuootEvalError::FunctionError(format!(
         "get: cannot get value from <{}>",
@@ -573,13 +552,28 @@ pub fn quoot_apply(
     0 => Err(QuootEvalError::FunctionError(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
-    1 => match eval(env, args.front().unwrap())? {
-      QuootValue::Fn(f) => f(env, &QuootStrictList::new()),
-      other => Err(QuootEvalError::FunctionError(format!(
-        "apply: cannot invoke type <{}>",
-        other.type_string()
-      ))),
-    },
+    1 => {
+      let f = eval(env, args.front().unwrap())?.as_fn("apply")?;
+      let env_clone = env.clone();
+      Ok(QuootValue::Fn(Box::leak(Box::new(
+        move |_inner_env: &Env, inner_args: &QuootStrictList| {
+          if inner_args.len() == 1 {
+            f(
+              &env_clone,
+              &eval(&env_clone, inner_args.front().unwrap())?
+                .as_list("apply")?
+                .to_strict()?,
+            )
+          } else {
+            Err(QuootEvalError::FunctionError(format!(
+              "apply: function constructed with 1-argument apply call \
+              needs 1 argument, got {}",
+              inner_args.len(),
+            )))
+          }
+        },
+      ))))
+    }
     2 => match eval(env, args.front().unwrap())? {
       QuootValue::Fn(f) => f(
         env,

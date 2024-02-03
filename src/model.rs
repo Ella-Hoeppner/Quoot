@@ -22,6 +22,7 @@ pub enum QuootEvalError {
   UnboundSymbolError(String),
   AppliedUnapplicableError(String),
   FunctionError(String),
+  OutOfBoundsError(i64, i64),
 }
 
 #[derive(Clone)]
@@ -69,6 +70,24 @@ impl QuootList {
         }
       }
     })
+  }
+  pub fn get(&self, n: i64) -> Result<QuootValue, QuootEvalError> {
+    match self {
+      QuootList::Strict(strict_list) => match strict_list.get(n as usize) {
+        Some(value) => Ok(value.to_owned()),
+        None => Err(QuootEvalError::OutOfBoundsError(
+          n,
+          strict_list.len() as i64,
+        )),
+      },
+      QuootList::Lazy(lazy_list) => match lazy_list.get(n as usize)? {
+        Some(value) => Ok(value.to_owned()),
+        None => Err(QuootEvalError::OutOfBoundsError(
+          n,
+          lazy_list.realized_len() as i64,
+        )),
+      },
+    }
   }
 }
 
@@ -176,6 +195,21 @@ impl QuootValue {
   pub fn as_fn(&self, error_prefix: &str) -> Result<QuootFn, QuootEvalError> {
     match self {
       QuootValue::Fn(f) => Ok(f.clone()),
+      QuootValue::List(list) => {
+        let cloned_list = list.clone();
+        Ok(Box::leak(Box::new(
+          move |_env: &Env, args: &QuootStrictList| {
+            if args.len() == 1 {
+              cloned_list.get(args.front().unwrap().as_num("<List>")?.floor())
+            } else {
+              Err(QuootEvalError::FunctionError(format!(
+                "<List>: need 1 argument, got {}",
+                args.len(),
+              )))
+            }
+          },
+        )))
+      }
       _ => {
         return Err(QuootEvalError::FunctionError(format!(
           "{}: can't use type {} as a function",
@@ -381,7 +415,7 @@ impl QuootLazyList {
     Ok(self)
   }
   pub fn get(
-    &mut self,
+    &self,
     index: usize,
   ) -> Result<Option<QuootValue>, QuootEvalError> {
     self.realize_to(index + 1)?;

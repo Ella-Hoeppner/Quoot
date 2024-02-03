@@ -3,9 +3,9 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 
 ## to do
 ### high priority
-* when `apply` gets one arg, it should return the equivalent of a partial call, like `(apply f)` = `(| apply f)`
 * change lazy lists to have an internal mutable "state" vector 
   * this is necessary for partial realization of things like filter, where if realization is interrupted in the middle of the original list then we need to know where to pick up from next time
+    * implement filter as a test for this
 * implement list functions handling of lazy lists
   * functions to change:
     * range, take, drop, rest, and concat, and cons should return lazy lists
@@ -26,8 +26,6 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
   * just a vau but it automatically evals it's arguments so it works like a lamba in a normal lisp
   * once this is done, translate my cljs kd-tree implementation to Quoot
     * run benchmarks for cljs, clj, and Quoot
-* implement as_fn for QuootValue::List
-  * treat it as a call to nth
 * think about whether there's a way to make a spread/unroll operator work
   * it's kinda like a macro but that applies to the parent form of where it's called... is there a way to fit this into the evaluation model?
 * more standard library functions:
@@ -152,7 +150,7 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
         @<are scary!>
         ```
           * here the last expression would parse to `(quote (alligators are scary!))`, and this would evaluate to `(alligators are scary!)`. `@` simply acts as a quote operator within which alligator brackets can be used
-      * maybe could allow delimiters to be directly declared inside `#syntax` for brevity, and potentially have `#syntax` forms just result in their first argument (the name of the symbol being tagged) when processed by the reader so they can be inlined into `#syntax` forms
+      * maybe could allow delimiters to be directly declared inside `#syntax` for brevity, and potentially have `#syntax` forms just result in their first argument (the name of the symbol being tagged) when processed by the reader so they can be inlined into other forms
         * in that case the first example above could be rewritten as:
         
           ```
@@ -201,3 +199,4 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 * ordered hashmaps
   * I guess these might just have to consist internally of a hashmap and a list/vector?
 * think about how transducers might fit in
+* think about concurrency
