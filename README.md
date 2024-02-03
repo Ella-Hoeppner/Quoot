@@ -3,9 +3,13 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 
 ## to do
 ### high priority
-* implement list functions take and drop for lazy lists
-  * QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
-    * as_list should return this, rather than just a List
+* let
+  * just needs to modify the environment it passes to its children
+* make lazy lists not re-realize their values when realized twice
+  * might have to use a Rc or RefCell or smth for this in LazyList?
+  * can check this with an expression like (let [x (range)] (first x) (first x)) if we add a temporary println! call to first
+    * should only see one message once realization is working properly
+* implement list functions for lazy lists
   * functions to change:
     * take
     * drop 
@@ -17,6 +21,13 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
     * concat
     * list?
   * need to think carefully for each of these about whether or not it should be lazy, potentially conditional on laziness/strictness of the inputs
+* lambdas
+  * once this is done, translate my cljs kd-tree implementation to Quoot
+    * run benchmarks for cljs, clj, and Quoot
+* eval function
+* quoting
+  * should basically just be an identity vau (i.e. doesn't eval it's arguments)
+    * at least until we need to do unquoting
 * implement as_fn for QuootValue::List
   * treat it as a call to nth
 * more standard library functions:
@@ -40,7 +51,7 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
       * sublist?
       * maybe just sub?
       * between?
-  * skip
+  * without
     * basically the opposite of subvec
     * 2 args: list and an index, returns a list without the value at that index
     * 3 args: list, start, end, returns a list skipping the values between start and end
@@ -72,41 +83,49 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
   * tbh I don't really love the names cons or conj...
   * maybe pushf, pushb, fpush, and bpush, respectively?
 * Use &str rather than String for string objects
-* str function
-  * also substr
-  * make get return a char
+* string functions
+  * mainly str and substr
+  * make get return a char for strings
     * should we have char as it's own type or just treat them as one-character strings?
+      * probably as it's own type
+* fork imbl
+  * impl Hash on Hashmap
+* QuootValue::Hashmap
+  * hashmap constructor fn
+  * implement get, set, count cases
+  * functions:
+    * merge
+    * map?
+    * zipmap
+    * keys
+    * vals
+  * make without work with it, should take an arbitrary number of keys to remove as args
+  * QuootValue::Hashmap.as_fn
+  * map? function
+  * as_fn case
+* QuootValue::Hashset
+  * set constructor fn
+  * implement get, set, count cases
+  * functions:
+    * union
+    * intersection
+    * difference
+    * set?
+  * make without work with it, should take an arbitrary number of keys to remove as args
+  * QuootValue::Hashmap.as_fn
+  * map? function
+  * as_fn case
+* unquoting
+  * just inside quotes, at first
+* top-level unquoting
+
+### low priority
+* Use rustyline crate for a nicer repl
 * maybe get rid of Sexp in parser, just use a subset of QuootValue?
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
   * probably don't need to start the expression_stack with an empty vector?
 * use &str in place of &[char] in parser
   * should be doable with char_indices
-* fork imbl
-  * impl Hash on Hashmap
-* QuootValue::Hashmap
-  * hashmap constructor fn
-  * implement get, set cases
-  * merge
-  * maybe make skip work on hashmaps too?
-    * could take an arbitrary number of args for this case
-  * QuootValue::Hashmap.as_fn
-* add hashmaps and sets
-  * add constructors fns for the corresponding names to the default environment
-  * add `get` to the default environment
-  * map? or hashmap? function
-* lambdas
-* once lambdas are implemented, translate my cljs kd-tree implementation to Quoot
-  * run benchmarks for cljs, clj, and Quoot
-* let forms
-* quoting
-* unquoting
-  * just inside quotes for now, don't worry about top-level unquoting yet
-* eval
-  * this will involve implementing the ability to spin up a new interpreter arbitrarily, which will also be useful later for top-level unquoting
-* top-level unquoting
-
-### low priority
-* Use rustyline crate for a nicer repl
 * in parser, use character indexes to give more descriptive parser errors
 * ordered hashmaps
   * I guess these might just have to consist of a hashmap and a list/vector?

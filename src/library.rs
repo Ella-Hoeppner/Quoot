@@ -1,10 +1,10 @@
 use crate::model::{
-  eval, Bindings, Env, LazyQuootValueList, Num, QuootEvalError, QuootFn,
-  QuootValue, QuootValueList,
+  eval, Bindings, Env, Num, QuootEvalError, QuootFn, QuootLazyList, QuootList,
+  QuootStrictList, QuootValue,
 };
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
-  values: QuootValueList,
+  values: QuootStrictList,
   error_message_name: &str,
   init_value: Num,
   folder: F,
@@ -21,7 +21,7 @@ fn fold_nums<F: FnMut(Num, &Num) -> Num>(
 }
 
 fn value_sum(
-  values: QuootValueList,
+  values: QuootStrictList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(fold_nums(
@@ -33,7 +33,7 @@ fn value_sum(
 }
 
 fn value_product(
-  values: QuootValueList,
+  values: QuootStrictList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(fold_nums(
@@ -45,7 +45,7 @@ fn value_product(
 }
 
 fn value_min(
-  values: QuootValueList,
+  values: QuootStrictList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(fold_nums(
@@ -57,7 +57,7 @@ fn value_min(
 }
 
 fn value_max(
-  values: QuootValueList,
+  values: QuootStrictList,
   error_message_name: &str,
 ) -> Result<Num, QuootEvalError> {
   Ok(fold_nums(
@@ -70,9 +70,9 @@ fn value_max(
 
 fn eval_all(
   env: &Env,
-  values: &QuootValueList,
-) -> Result<QuootValueList, QuootEvalError> {
-  Ok(QuootValueList::from(
+  values: &QuootStrictList,
+) -> Result<QuootStrictList, QuootEvalError> {
+  Ok(QuootStrictList::from(
     values
       .iter()
       .map(|value| eval(env, value))
@@ -83,13 +83,13 @@ fn eval_all(
 }
 
 pub fn compose(f: QuootFn, g: QuootFn) -> QuootFn {
-  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
-    f(env, &QuootValueList::unit(g(env, args)?))
+  Box::leak(Box::new(move |env: &Env, args: &QuootStrictList| {
+    f(env, &QuootStrictList::unit(g(env, args)?))
   }))
 }
 
-pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
-  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
+pub fn partial(f: QuootFn, prefix_args: QuootStrictList) -> QuootFn {
+  Box::leak(Box::new(move |env: &Env, args: &QuootStrictList| {
     let cloned_args = &mut prefix_args.clone();
     cloned_args.append(args.to_owned());
     f(env, cloned_args)
@@ -98,7 +98,7 @@ pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
 
 pub fn quoot_inc(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
@@ -117,7 +117,7 @@ pub fn quoot_inc(
 
 pub fn quoot_dec(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(QuootValue::Num(
@@ -136,21 +136,21 @@ pub fn quoot_dec(
 
 pub fn quoot_add(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(value_sum(eval_all(env, args)?, "+")?))
 }
 
 pub fn quoot_multiply(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(value_product(eval_all(env, args)?, "*")?))
 }
 
 pub fn quoot_subtract(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   let args_clone = &mut args.clone();
   match args_clone.pop_front() {
@@ -178,7 +178,7 @@ pub fn quoot_subtract(
 
 pub fn quoot_divide(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   let args_clone = &mut args.clone();
   match args_clone.pop_front() {
@@ -206,7 +206,7 @@ pub fn quoot_divide(
 
 pub fn quoot_min(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
@@ -218,7 +218,7 @@ pub fn quoot_min(
 
 pub fn quoot_max(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
@@ -230,7 +230,7 @@ pub fn quoot_max(
 
 pub fn quoot_modulo(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let dividend = eval(env, args.front().unwrap())?.as_num("mod")?;
@@ -251,7 +251,7 @@ pub fn quoot_modulo(
 
 pub fn quoot_quotient(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let dividend = eval(env, args.front().unwrap())?.as_num("quot")?;
@@ -272,7 +272,7 @@ pub fn quoot_quotient(
 
 pub fn quoot_equal(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Bool(match args.len() {
     0 => true,
@@ -291,7 +291,7 @@ pub fn quoot_equal(
 
 pub fn quoot_numerical_equal(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Bool(match args.len() {
     0 => true,
@@ -310,22 +310,22 @@ pub fn quoot_numerical_equal(
 
 pub fn quoot_list_constructor(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
-  Ok(QuootValue::List(eval_all(env, args)?))
+  Ok(QuootValue::List(QuootList::Strict(eval_all(env, args)?)))
 }
 
 pub fn quoot_count(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Num(Num::Int(0))),
-      QuootValue::List(list) => {
+      QuootValue::List(QuootList::Strict(list)) => {
         Ok(QuootValue::Num(Num::Int(list.len() as i64)))
       }
-      QuootValue::LazyList(list) => {
+      QuootValue::List(QuootList::Lazy(list)) => {
         let cloned_list = &mut list.clone();
         let realized_list = cloned_list.fully_realize()?;
         Ok(QuootValue::Num(Num::Int(
@@ -347,25 +347,24 @@ pub fn quoot_count(
 
 pub fn quoot_cons(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    1 => Ok(QuootValue::List(QuootValueList::unit(eval(
-      env,
-      args.front().unwrap(),
-    )?))),
+    1 => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::unit(
+      eval(env, args.front().unwrap())?,
+    )))),
     2 => {
       let first_arg = eval(env, args.front().unwrap())?;
       let second_arg = eval(env, args.get(1).unwrap())?;
       match second_arg {
-        QuootValue::List(list) => {
+        QuootValue::List(QuootList::Strict(list)) => {
           let list_clone = &mut list.clone();
           list_clone.push_front(first_arg);
-          Ok(QuootValue::List(list_clone.to_owned()))
+          Ok(QuootValue::List(QuootList::Strict(list_clone.to_owned())))
         }
-        QuootValue::Nil => {
-          Ok(QuootValue::List(QuootValueList::unit(first_arg)))
-        }
+        QuootValue::Nil => Ok(QuootValue::List(QuootList::Strict(
+          QuootStrictList::unit(first_arg),
+        ))),
         _ => Err(QuootEvalError::FunctionError(format!(
           "cons: cannot cons onto a <{}>",
           second_arg.type_string()
@@ -381,28 +380,29 @@ pub fn quoot_cons(
 
 pub fn quoot_concat(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 0 {
-    Ok(QuootValue::List(QuootValueList::new()))
+    Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new())))
   } else {
     let values = &mut eval_all(env, args)?;
-    let concat_list = &mut values.pop_front().unwrap().as_list("concat")?;
+    let concat_list =
+      &mut values.pop_front().unwrap().as_list("concat")?.to_strict()?;
     while let Some(list) = values.pop_front() {
-      concat_list.append(list.as_list("concat")?);
+      concat_list.append(list.as_list("concat")?.to_strict()?);
     }
-    Ok(QuootValue::List(concat_list.to_owned()))
+    Ok(QuootValue::List(QuootList::Strict(concat_list.to_owned())))
   }
 }
 
 pub fn quoot_get(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Nil),
-      QuootValue::List(list) => {
+      QuootValue::List(QuootList::Strict(list)) => {
         let n =
           eval(env, args.get(1).unwrap())?.as_num("get")?.floor() as usize;
         match list.get(n) {
@@ -414,7 +414,7 @@ pub fn quoot_get(
           Some(value) => Ok(value.to_owned()),
         }
       }
-      QuootValue::LazyList(list) => {
+      QuootValue::List(QuootList::Lazy(list)) => {
         let n =
           eval(env, args.get(1).unwrap())?.as_num("get")?.floor() as usize;
         match list.clone().get(n)? {
@@ -441,17 +441,19 @@ pub fn quoot_get(
 
 pub fn quoot_take(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
     let n =
       0.max(eval(env, args.front().unwrap())?.as_num("take")?.floor()) as usize;
-    let list = eval(env, args.get(1).unwrap())?.as_list("take")?;
-    Ok(QuootValue::List(if n >= list.len() {
+    let list = eval(env, args.get(1).unwrap())?
+      .as_list("take")?
+      .to_strict()?;
+    Ok(QuootValue::List(QuootList::Strict(if n >= list.len() {
       list
     } else {
       list.take(n)
-    }))
+    })))
   } else {
     Err(QuootEvalError::FunctionError(format!(
       "take: need 2 arguments, got {}",
@@ -462,15 +464,18 @@ pub fn quoot_take(
 
 pub fn quoot_drop(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    Ok(QuootValue::List(
-      eval(env, args.get(1).unwrap())?.as_list("drop")?.skip(
-        0.max(eval(env, args.front().unwrap())?.as_num("drop")?.floor())
-          as usize,
-      ),
-    ))
+    Ok(QuootValue::List(QuootList::Strict(
+      eval(env, args.get(1).unwrap())?
+        .as_list("drop")?
+        .to_strict()?
+        .skip(
+          0.max(eval(env, args.front().unwrap())?.as_num("drop")?.floor())
+            as usize,
+        ),
+    )))
   } else {
     Err(QuootEvalError::FunctionError(format!(
       "drop: need 2 arguments, got {}",
@@ -481,18 +486,18 @@ pub fn quoot_drop(
 
 pub fn quoot_range(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    0 => Ok(QuootValue::LazyList(LazyQuootValueList::new(&|values| {
-      Ok(Some(QuootValue::Num(Num::Int(values.len() as i64))))
-    }))),
+    0 => Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+      &|values| Ok(Some(QuootValue::Num(Num::Int(values.len() as i64)))),
+    )))),
     1 => {
-      let list = &mut QuootValueList::new();
+      let list = &mut QuootStrictList::new();
       for i in 0..eval(env, args.front().unwrap())?.as_num("range")?.floor() {
         list.push_back(QuootValue::Num(Num::Int(i)));
       }
-      Ok(QuootValue::List(list.to_owned()))
+      Ok(QuootValue::List(QuootList::Strict(list.to_owned())))
     }
     n => Err(QuootEvalError::FunctionError(format!(
       "range: need 0 or 1 arguments, got {}",
@@ -503,14 +508,14 @@ pub fn quoot_range(
 
 pub fn quoot_apply(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
     1 => match eval(env, args.front().unwrap())? {
-      QuootValue::Fn(f) => f(env, &QuootValueList::new()),
+      QuootValue::Fn(f) => f(env, &QuootStrictList::new()),
       other => Err(QuootEvalError::FunctionError(format!(
         "apply: cannot invoke type <{}>",
         other.type_string()
@@ -519,7 +524,7 @@ pub fn quoot_apply(
     2 => match args.front().unwrap() {
       QuootValue::Fn(f) => {
         let f_arg_list = eval(env, args.get(1).unwrap())?.as_list("apply")?;
-        f(env, &f_arg_list)
+        f(env, &f_arg_list.to_strict()?)
       }
       other => Err(QuootEvalError::FunctionError(format!(
         "apply: cannot invoke type <{}>",
@@ -535,7 +540,7 @@ pub fn quoot_apply(
 
 pub fn quoot_identity(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     Ok(eval(env, &args.front().unwrap().clone())?)
@@ -549,7 +554,7 @@ pub fn quoot_identity(
 
 pub fn quoot_compose(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Ok(QuootValue::Fn(&quoot_identity)),
@@ -574,7 +579,7 @@ pub fn quoot_compose(
 
 pub fn quoot_partial(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Err(QuootEvalError::FunctionError(
@@ -593,7 +598,7 @@ pub fn quoot_partial(
 
 pub fn quoot_is_nil(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -609,7 +614,7 @@ pub fn quoot_is_nil(
 
 pub fn quoot_is_bool(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -625,7 +630,7 @@ pub fn quoot_is_bool(
 
 pub fn quoot_is_list(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -641,7 +646,7 @@ pub fn quoot_is_list(
 
 pub fn quoot_is_num(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -657,7 +662,7 @@ pub fn quoot_is_num(
 
 pub fn quoot_is_string(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -673,7 +678,7 @@ pub fn quoot_is_string(
 
 pub fn quoot_is_symbol(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -689,7 +694,7 @@ pub fn quoot_is_symbol(
 
 pub fn quoot_is_fn(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
@@ -705,12 +710,12 @@ pub fn quoot_is_fn(
 
 pub fn quoot_is_empty(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(match eval(env, args.front().unwrap())? {
       QuootValue::Nil => true,
-      QuootValue::List(list) => list.is_empty(),
+      QuootValue::List(list) => list.is_empty()?,
       other => {
         return Err(QuootEvalError::FunctionError(format!(
           "empty?: cannot check whether type {} is empty",
@@ -727,14 +732,24 @@ pub fn quoot_is_empty(
 
 pub fn quoot_first(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Nil),
-      QuootValue::List(list) => Ok(match list.front() {
-        None => QuootValue::Nil,
-        Some(value) => value.to_owned(),
+      QuootValue::List(QuootList::Strict(list)) => Ok({
+        match list.front() {
+          None => QuootValue::Nil,
+          Some(value) => value.to_owned(),
+        }
+      }),
+      QuootValue::List(QuootList::Lazy(list)) => Ok({
+        let list_clone = &mut list.clone();
+        list_clone.realize_to(1)?;
+        match list_clone.get(0)? {
+          None => QuootValue::Nil,
+          Some(value) => value.to_owned(),
+        }
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
@@ -752,14 +767,22 @@ pub fn quoot_first(
 
 pub fn quoot_last(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Nil),
-      QuootValue::List(list) => Ok(match list.last() {
+      QuootValue::List(QuootList::Strict(list)) => Ok(match list.last() {
         None => QuootValue::Nil,
         Some(value) => value.to_owned(),
+      }),
+      QuootValue::List(QuootList::Lazy(list)) => Ok({
+        let list_clone = &mut list.clone();
+        list_clone.fully_realize()?;
+        match list_clone.get(list_clone.realized_len() - 1)? {
+          None => QuootValue::Nil,
+          Some(value) => value.to_owned(),
+        }
       }),
       other => {
         return Err(QuootEvalError::FunctionError(format!(
@@ -777,18 +800,18 @@ pub fn quoot_last(
 
 pub fn quoot_reverse(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => {
       let list = &mut eval(env, args.front().unwrap())?
         .as_list("reverse")?
-        .clone();
-      let new_list = &mut QuootValueList::new();
+        .to_strict()?;
+      let new_list = &mut QuootStrictList::new();
       while let Some(value) = list.pop_front() {
         new_list.push_front(value);
       }
-      Ok(QuootValue::List(new_list.to_owned()))
+      Ok(QuootValue::List(QuootList::Strict(new_list.clone())))
     }
     n => Err(QuootEvalError::FunctionError(format!(
       "reverse: need 1 argument, got {}",
@@ -799,7 +822,7 @@ pub fn quoot_reverse(
 
 pub fn quoot_bool(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Bool(
@@ -814,7 +837,7 @@ pub fn quoot_bool(
 
 pub fn quoot_int(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Num(Num::Int(
@@ -829,7 +852,7 @@ pub fn quoot_int(
 
 pub fn quoot_abs(
   env: &Env,
-  args: &QuootValueList,
+  args: &QuootStrictList,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => Ok(QuootValue::Num(
