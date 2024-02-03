@@ -579,11 +579,13 @@ pub fn quoot_apply(
         other.type_string()
       ))),
     },
-    2 => match args.front().unwrap() {
-      QuootValue::Fn(f) => {
-        let f_arg_list = eval(env, args.get(1).unwrap())?.as_list("apply")?;
-        f(env, &f_arg_list.to_strict()?)
-      }
+    2 => match eval(env, args.front().unwrap())? {
+      QuootValue::Fn(f) => f(
+        env,
+        &eval(env, args.get(1).unwrap())?
+          .as_list("apply")?
+          .to_strict()?,
+      ),
       other => Err(QuootEvalError::FunctionError(format!(
         "apply: cannot invoke type <{}>",
         other.type_string()
