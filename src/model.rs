@@ -1,6 +1,9 @@
 use crate::parse::{QuootParseError, Sexp};
 use imbl::{HashMap, Vector};
-use std::fmt;
+use std::{
+  fmt,
+  sync::{Arc, Mutex},
+};
 
 #[derive(Clone)]
 pub enum QuootValue {
@@ -59,8 +62,8 @@ impl QuootList {
     Ok(match self {
       QuootList::Strict(list) => list.len() == 0,
       QuootList::Lazy(list) => {
-        if list.fully_realized() {
-          list.values.len() == 0
+        if list.realized_len() > 0 {
+          true
         } else {
           list.clone().realize()?.is_none()
         }
@@ -219,25 +222,7 @@ impl fmt::Display for QuootValue {
           }
           fmt.write_str(")")?;
         }
-        QuootList::Lazy(lazy_list) => {
-          if lazy_list.fully_realized() {
-            match lazy_list.to_strict() {
-              Ok(values) => {
-                fmt.write_str("(")?;
-                let mut separator = "";
-                for value in values {
-                  fmt.write_str(separator)?;
-                  fmt.write_str(&value.to_string())?;
-                  separator = " ";
-                }
-                fmt.write_str(")")?;
-              }
-              Err(err) => return Err(fmt::Error),
-            }
-          } else {
-            fmt.write_str("<LazyList>")?
-          }
-        }
+        QuootList::Lazy(lazy_list) => fmt.write_str("<LazyList>")?,
       },
       QuootValue::Nil => fmt.write_str("nil")?,
       QuootValue::Bool(b) => {
@@ -346,8 +331,7 @@ impl Num {
 
 #[derive(Clone)]
 pub struct QuootLazyList {
-  values: QuootStrictList,
-  fully_realized: bool,
+  values: Arc<Mutex<QuootStrictList>>,
   realizer: &'static dyn Fn(
     QuootStrictList,
   ) -> Result<Option<QuootValue>, QuootEvalError>,
@@ -356,66 +340,56 @@ pub struct QuootLazyList {
 impl QuootLazyList {
   pub fn new(realizer: QuootRealizer) -> QuootLazyList {
     QuootLazyList {
-      values: QuootStrictList::new(),
-      fully_realized: false,
+      values: Arc::new(Mutex::new(QuootStrictList::new())),
       realizer,
     }
   }
   pub fn realized_len(&self) -> usize {
-    self.values.len()
+    (*(*self.values).lock().unwrap()).len()
   }
-  pub fn fully_realized(&self) -> bool {
-    self.fully_realized
-  }
-  fn realize(&mut self) -> Result<Option<&mut QuootLazyList>, QuootEvalError> {
+  fn realize(&self) -> Result<Option<&QuootLazyList>, QuootEvalError> {
     println!("realizing!!!");
-    if self.fully_realized {
-      return Ok(None);
-    }
-    let new_value = (self.realizer)(self.values.clone())?;
+    let lock = &mut (*self.values).lock().unwrap();
+    let new_value = (self.realizer)(lock.clone())?;
     match new_value {
-      None => {
-        self.fully_realized = true;
-        Ok(None)
-      }
+      None => Ok(None),
       Some(value) => {
-        self.values.push_back(value);
+        lock.push_back(value);
         Ok(Some(self))
       }
     }
   }
   pub fn realize_to(
-    &mut self,
+    &self,
     length: usize,
-  ) -> Result<Option<&mut QuootLazyList>, QuootEvalError> {
-    while self.values.len() < length {
+  ) -> Result<Option<&QuootLazyList>, QuootEvalError> {
+    loop {
+      {
+        let lock = self.values.lock().unwrap();
+        if (*lock).len() >= length {
+          break;
+        }
+      }
       if self.realize()?.is_none() {
         return Ok(None);
       }
     }
     Ok(Some(self))
   }
-  pub fn fully_realize(
-    &mut self,
-  ) -> Result<&mut QuootLazyList, QuootEvalError> {
-    loop {
-      if self.realize()?.is_none() {
-        break;
-      };
-    }
+  pub fn fully_realize(&self) -> Result<&QuootLazyList, QuootEvalError> {
+    while self.realize()?.is_some() {}
     Ok(self)
   }
   pub fn get(
     &mut self,
     index: usize,
-  ) -> Result<Option<&QuootValue>, QuootEvalError> {
+  ) -> Result<Option<QuootValue>, QuootEvalError> {
     self.realize_to(index + 1)?;
-    Ok(self.values.get(index).map(|a| a))
+    Ok(self.values.lock().unwrap().get(index).map(|e| e.clone()))
   }
   pub fn to_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
-    let mut clone = self.clone();
-    clone.fully_realize()?;
-    Ok(clone.values.clone())
+    self.fully_realize()?;
+    Ok(self.values.lock().unwrap().clone())
   }
 }
 

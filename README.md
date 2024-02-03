@@ -3,10 +3,6 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 
 ## to do
 ### high priority
-* make lazy lists not re-realize their values when realized twice
-  * might have to use a Rc or RefCell or smth for this in LazyList?
-  * can check this with an expression like (let [x (range)] [(first x) (first x)]) if we add a temporary println! call to realization
-    * should only see one message once realization is working properly
 * implement list functions handling of lazy lists
   * functions to change:
     * take, drop, rest, and concat should always return lazy lists
