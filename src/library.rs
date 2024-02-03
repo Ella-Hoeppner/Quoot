@@ -96,6 +96,64 @@ pub fn partial(f: QuootFn, prefix_args: QuootStrictList) -> QuootFn {
   }))
 }
 
+pub fn quoot_let(
+  env: &Env,
+  args: &QuootStrictList,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let bindings = args.front().unwrap();
+    match bindings {
+      QuootValue::List(QuootList::Strict(list)) => {
+        let list_clone = &mut list.clone();
+        match list_clone.pop_front() {
+          Some(value) => {
+            if value.eq(&QuootValue::Symbol("#list".to_owned())) {
+              if list_clone.len() % 2 == 0 {
+                let sub_env = &mut env.clone();
+                while let Some(binding_name) = list_clone.pop_front() {
+                  match binding_name {
+                    QuootValue::Symbol(name) => {
+                      let binding_value = list_clone.pop_front().unwrap();
+                      sub_env.bind(&name, binding_value);
+                    }
+                    other => {
+                      return Err(QuootEvalError::FunctionError(format!(
+                        "let: names must be symbols, got <{}>",
+                        other.type_string()
+                      )))
+                    }
+                  }
+                }
+                eval(sub_env, args.get(1).unwrap())
+              } else {
+                Err(QuootEvalError::FunctionError(format!(
+                  "let: first argument needs an even number of forms"
+                )))
+              }
+            } else {
+              Err(QuootEvalError::FunctionError(format!(
+                "let: first argument must be a list literal, got list"
+              )))
+            }
+          }
+          None => Err(QuootEvalError::FunctionError(format!(
+            "let: first argument must be a list literal, got ()",
+          ))),
+        }
+      }
+      other => Err(QuootEvalError::FunctionError(format!(
+        "let: first argument must be a list literal, got <{}>",
+        other.type_string()
+      ))),
+    }
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "let: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn quoot_inc(
   env: &Env,
   args: &QuootStrictList,
@@ -109,7 +167,7 @@ pub fn quoot_inc(
     ))
   } else {
     Err(QuootEvalError::FunctionError(format!(
-      "inc: needed 1 argument, got {}",
+      "inc: need 1 argument, got {}",
       args.len()
     )))
   }
@@ -128,7 +186,7 @@ pub fn quoot_dec(
     ))
   } else {
     Err(QuootEvalError::FunctionError(format!(
-      "inc: needed 1 argument, got {}",
+      "inc: need 1 argument, got {}",
       args.len()
     )))
   }
@@ -874,6 +932,7 @@ pub fn default_bindings() -> Bindings {
     "TAU".to_owned(),
     QuootValue::Num(Num::Float(6.283185307179586)),
   );
+  bindings.insert("let".to_owned(), QuootValue::Fn(&quoot_let));
   bindings.insert("inc".to_owned(), QuootValue::Fn(&quoot_inc));
   bindings.insert("dec".to_owned(), QuootValue::Fn(&quoot_dec));
   bindings.insert("+".to_owned(), QuootValue::Fn(&quoot_add));
@@ -887,6 +946,7 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("mod".to_owned(), QuootValue::Fn(&quoot_modulo));
   bindings.insert("quot".to_owned(), QuootValue::Fn(&quoot_quotient));
   bindings.insert("list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
+  bindings.insert("#list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
   bindings.insert("count".to_owned(), QuootValue::Fn(&quoot_count));
   bindings.insert("cons".to_owned(), QuootValue::Fn(&quoot_cons));
   bindings.insert("concat".to_owned(), QuootValue::Fn(&quoot_concat));

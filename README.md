@@ -3,8 +3,7 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 
 ## to do
 ### high priority
-* let
-  * just needs to modify the environment it passes to its children
+* seems like I broke apply, fix it
 * make lazy lists not re-realize their values when realized twice
   * might have to use a Rc or RefCell or smth for this in LazyList?
   * can check this with an expression like (let [x (range)] (first x) (first x)) if we add a temporary println! call to first

@@ -150,10 +150,10 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
 
   let delimiters: Vec<(&[char], &[char], Option<String>)> = vec![
     (&['('], &[')'], None),
-    (&['['], &[']'], Some("list".to_string())),
-    (&['{'], &['}'], Some("hashmap".to_string())),
-    (&['#', '['], &[']'], Some("hashset".to_string())),
-    (&['#', '{'], &['}'], Some("ordered-hashmap".to_string())),
+    (&['['], &[']'], Some("#list".to_string())),
+    (&['{'], &['}'], Some("#hashmap".to_string())),
+    (&['#', '{'], &['}'], Some("#hashset".to_string())),
+    (&['#', '['], &[']'], Some("#ordered-hashmap".to_string())),
   ];
   let prefixes: Vec<(&[char], String)> = vec![
     (&['\''], "quote".to_string()),
