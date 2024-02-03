@@ -528,7 +528,8 @@ pub fn quoot_range(
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
-      &|values| Ok(Some(QuootValue::Num(Num::Int(values.len() as i64)))),
+      &|values, state| Ok(Some(QuootValue::Num(Num::Int(values.len() as i64)))),
+      (QuootStrictList::new(), None),
     )))),
     1 => {
       let list = &mut QuootStrictList::new();
@@ -853,6 +854,21 @@ pub fn quoot_last(
   }
 }
 
+pub fn quoot_rest(
+  env: &Env,
+  args: &QuootStrictList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::List(
+      eval(env, args.front().unwrap())?.as_list("rest")?.rest()?,
+    )),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "first: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn quoot_reverse(
   env: &Env,
   args: &QuootStrictList,
@@ -970,6 +986,7 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("abs".to_owned(), QuootValue::Fn(&quoot_abs));
   bindings.insert("first".to_owned(), QuootValue::Fn(&quoot_first));
   bindings.insert("last".to_owned(), QuootValue::Fn(&quoot_last));
+  bindings.insert("rest".to_owned(), QuootValue::Fn(&quoot_rest));
   bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));
   bindings.to_owned()
 }
