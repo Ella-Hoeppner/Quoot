@@ -1,9 +1,8 @@
 # Quoot
-WIP clojure-ish lisp, with an emphasis on flexible metaprogramming, DSLs, and code generation (for other languages)
+WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, with an emphasis on flexible metaprogramming, DSLs, and code generation (for other languages)
 
 ## to do
 ### high priority
-* update standard functions for new evaluation model
 * implement list functions take and drop for lazy lists
   * QuootValue::List should contain it's own enum, with a type for LazyList and StrictList
     * as_list should return this, rather than just a List

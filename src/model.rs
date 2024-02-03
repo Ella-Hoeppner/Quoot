@@ -358,20 +358,6 @@ impl fmt::Display for QuootValue {
   }
 }
 
-pub fn compose(f: QuootFn, g: QuootFn) -> QuootFn {
-  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
-    f(env, &QuootValueList::unit(g(env, args)?))
-  }))
-}
-
-pub fn partial(f: QuootFn, prefix_args: QuootValueList) -> QuootFn {
-  Box::leak(Box::new(move |env: &Env, args: &QuootValueList| {
-    let cloned_args = &mut prefix_args.clone();
-    cloned_args.append(args.to_owned());
-    f(env, cloned_args)
-  }))
-}
-
 pub fn eval(
   env: &Env,
   value: &QuootValue,
