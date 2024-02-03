@@ -1,38 +1,44 @@
 use crate::library::default_bindings;
 use crate::model::{eval, Env, QuootEvalError, QuootValue};
 use crate::parse::parse;
-use std::io;
-use std::io::Write;
+use rustyline::error::ReadlineError;
+use rustyline::{DefaultEditor, Result};
 
-fn print_prompt() {
-  print!("> ");
-  io::stdout().flush().unwrap();
-}
-
-pub fn repl() {
+pub fn repl() -> Result<()> {
   println!("\nQuoot repl started :D\n");
   let global_env = &mut Env::from_bindings(default_bindings());
-  let mut input_buffer = String::new();
-  let stdin = io::stdin();
-  print_prompt();
-  while stdin.read_line(&mut input_buffer).is_ok() {
-    let trimmed_input = input_buffer.trim_start().trim_end();
-    if trimmed_input.eq("#EXIT") {
-      println!("\nQuoot repl stopped. bye!!\n");
-      break;
-    }
-    match parse(trimmed_input) {
-      Err(parse_error) => {
-        println!("{:?}", QuootEvalError::Parse(parse_error))
-      }
-      Ok(form) => match eval(global_env, &QuootValue::from_sexp(&form)) {
-        Err(e) => println!("{:?}", e),
-        Ok(value) => {
-          println!("{}", value.to_string())
-        }
-      },
-    }
-    input_buffer.clear();
-    print_prompt();
+
+  let mut rl = DefaultEditor::new()?;
+  if rl.load_history("history.txt").is_err() {
+    println!("No Quoot repl history found");
   }
+  loop {
+    match rl.readline("> ") {
+      Ok(line) => {
+        let trimmed_input = line.trim_start().trim_end();
+        rl.add_history_entry(line.as_str())?;
+        match parse(trimmed_input) {
+          Err(parse_error) => {
+            println!("{:?}", QuootEvalError::Parse(parse_error))
+          }
+          Ok(form) => match eval(global_env, &QuootValue::from_sexp(&form)) {
+            Err(e) => println!("{:?}", e),
+            Ok(value) => {
+              println!("{}", value.to_string())
+            }
+          },
+        }
+      }
+      Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+        println!("\nStopping Quoot repl. Bye!!!");
+        break;
+      }
+      Err(err) => {
+        println!("Error: {:?}", err);
+        break;
+      }
+    }
+  }
+  rl.save_history("history.txt");
+  Ok(())
 }

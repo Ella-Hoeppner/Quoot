@@ -113,7 +113,8 @@ pub fn quoot_let(
                 while let Some(binding_name) = list_clone.pop_front() {
                   match binding_name {
                     QuootValue::Symbol(name) => {
-                      let binding_value = list_clone.pop_front().unwrap();
+                      let binding_value =
+                        eval(env, &list_clone.pop_front().unwrap())?;
                       sub_env.bind(&name, binding_value);
                     }
                     other => {

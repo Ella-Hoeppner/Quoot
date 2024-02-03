@@ -5,20 +5,13 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 ### high priority
 * make lazy lists not re-realize their values when realized twice
   * might have to use a Rc or RefCell or smth for this in LazyList?
-  * can check this with an expression like (let [x (range)] (first x) (first x)) if we add a temporary println! call to realization
+  * can check this with an expression like (let [x (range)] [(first x) (first x)]) if we add a temporary println! call to realization
     * should only see one message once realization is working properly
-* implement list functions for lazy lists
+* implement list functions handling of lazy lists
   * functions to change:
-    * take
-    * drop 
-    * first
-    * last
-    * rest
-    * butlast
-    * cons
-    * concat
-    * list?
-  * need to think carefully for each of these about whether or not it should be lazy, potentially conditional on laziness/strictness of the inputs
+    * take, drop, rest, and concat should always return lazy lists
+    * cons should be able to accept a lazy as the second arg
+    * last shouldn't clone when calling fully_realize
 * lambdas
   * once this is done, translate my cljs kd-tree implementation to Quoot
     * run benchmarks for cljs, clj, and Quoot
@@ -118,7 +111,6 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 * top-level unquoting
 
 ### low priority
-* Use rustyline crate for a nicer repl
 * maybe get rid of Sexp in parser, just use a subset of QuootValue?
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
   * probably don't need to start the expression_stack with an empty vector?

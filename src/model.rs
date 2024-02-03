@@ -368,6 +368,7 @@ impl QuootLazyList {
     self.fully_realized
   }
   fn realize(&mut self) -> Result<Option<&mut QuootLazyList>, QuootEvalError> {
+    println!("realizing!!!");
     if self.fully_realized {
       return Ok(None);
     }
