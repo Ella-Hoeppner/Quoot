@@ -12,8 +12,8 @@ pub enum QuootValue {
   Num(Num),
   String(String),
   Symbol(String),
-  Fn(QuootFn),
   List(QuootList),
+  Fn(QuootFn),
 }
 
 #[derive(Debug, PartialEq)]
