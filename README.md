@@ -3,7 +3,8 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 
 ## to do
 ### high priority
-* implement filter as a test for the laziness model
+* make even? work for floats that are identical to integers
+  * add odd?
 * implement list functions handling of lazy lists
   * functions to change:
     * range, take, drop, rest, and concat, and cons should return lazy lists
@@ -27,16 +28,13 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
 * think about whether there's a way to make a spread/unroll operator work
   * it's kinda like a macro but that applies to the parent form of where it's called... is there a way to fit this into the evaluation model?
 * more standard library functions:
-  * interleave
-    * should always be lazy
-  * \>, \<, \>=, \<=
-  * drop-last, take-last
+  * interleave (lazy)
   * map (lazy)
-  * filter (lazy)
   * repeat (lazy)
   * iterate (lazy)
   * partition (lazy)
-  * interleave (lazy)
+  * \>, \<, \>=, \<=
+  * drop-last, take-last
   * get-back
     * like nth but indexes go backwards from the end of the list
   * some
@@ -178,6 +176,11 @@ WIP interpreted clojure-looking lisp with a vau-calculus-like evaluation model, 
     * maybe even try to do a #[derive] thingy?
 
 ### low priority
+* optimization:
+  * I think there are probably a lot of places where I do like `let x = &mut ...` that could actually just be `let mut x = ...`, which can let me avoid a `.clone()` call later on.
+    * Didn't realize before that that was the way `&mut` values worked. Thanks Fay! <3
+  * in quoot_let, I don't think we need to create list_clone, can just call `.get` on the original reference rather than a bunch of `.pop_front`s
+  * wherever I'm creating a vector iteratively with `.push_front` or `.push_back`, might be able to just use `Vector::from(vec![])`
 * what about allowing for `.` and `|` to be used as infix operators, within symbol names?
   * so like `+.-` would be equivalent to `(comp + -)`, and `+|1` would be `(partial + 1)`
   * I don't think we'll be using `|` for anything else so I guess that would be fine, takes it out of the pool of usable characters for symbol names tho...

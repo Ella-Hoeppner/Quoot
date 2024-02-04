@@ -1,6 +1,6 @@
 use crate::model::{
-  eval, Bindings, Env, Num, QuootEvalError, QuootFn, QuootLazyList, QuootList,
-  QuootStrictList, QuootValue,
+  eval, Bindings, Env, Num, QuootEvalError, QuootFn, QuootLazyList,
+  QuootLazyState, QuootList, QuootStrictList, QuootValue,
 };
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
@@ -446,9 +446,9 @@ pub fn quoot_concat(
   } else {
     let values = &mut eval_all(env, args)?;
     let concat_list =
-      &mut values.pop_front().unwrap().as_list("concat")?.to_strict()?;
+      &mut values.pop_front().unwrap().as_list("concat")?.as_strict()?;
     while let Some(list) = values.pop_front() {
-      concat_list.append(list.as_list("concat")?.to_strict()?);
+      concat_list.append(list.as_list("concat")?.as_strict()?);
     }
     Ok(QuootValue::List(QuootList::Strict(concat_list.to_owned())))
   }
@@ -462,7 +462,14 @@ pub fn quoot_get(
     match eval(env, args.front().unwrap())? {
       QuootValue::Nil => Ok(QuootValue::Nil),
       QuootValue::List(list) => {
-        Ok(list.get(eval(env, args.get(1).unwrap())?.as_num("get")?.floor())?)
+        let index = eval(env, args.get(1).unwrap())?.as_num("get")?.floor();
+        match list.get(index)? {
+          Some(value) => Ok(value),
+          None => Err(QuootEvalError::OutOfBoundsError(
+            index,
+            list.as_strict()?.len() as i64,
+          )),
+        }
       }
       other => Err(QuootEvalError::FunctionError(format!(
         "get: cannot get value from <{}>",
@@ -486,7 +493,7 @@ pub fn quoot_take(
       0.max(eval(env, args.front().unwrap())?.as_num("take")?.floor()) as usize;
     let list = eval(env, args.get(1).unwrap())?
       .as_list("take")?
-      .to_strict()?;
+      .as_strict()?;
     Ok(QuootValue::List(QuootList::Strict(if n >= list.len() {
       list
     } else {
@@ -508,7 +515,7 @@ pub fn quoot_drop(
     Ok(QuootValue::List(QuootList::Strict(
       eval(env, args.get(1).unwrap())?
         .as_list("drop")?
-        .to_strict()?
+        .as_strict()?
         .skip(
           0.max(eval(env, args.front().unwrap())?.as_num("drop")?.floor())
             as usize,
@@ -528,8 +535,13 @@ pub fn quoot_range(
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     0 => Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
-      &|values, state| Ok(Some(QuootValue::Num(Num::Int(values.len() as i64)))),
-      (QuootStrictList::new(), None),
+      &|state| {
+        state.realized_values.push_back(QuootValue::Num(Num::Int(
+          state.realized_values.len() as i64,
+        )));
+        Ok(())
+      },
+      QuootLazyState::new(QuootStrictList::new(), None, None),
     )))),
     1 => {
       let list = &mut QuootStrictList::new();
@@ -563,7 +575,7 @@ pub fn quoot_apply(
               &env_clone,
               &eval(&env_clone, inner_args.front().unwrap())?
                 .as_list("apply")?
-                .to_strict()?,
+                .as_strict()?,
             )
           } else {
             Err(QuootEvalError::FunctionError(format!(
@@ -580,7 +592,7 @@ pub fn quoot_apply(
         env,
         &eval(env, args.get(1).unwrap())?
           .as_list("apply")?
-          .to_strict()?,
+          .as_strict()?,
       ),
       other => Err(QuootEvalError::FunctionError(format!(
         "apply: cannot invoke type <{}>",
@@ -786,6 +798,24 @@ pub fn quoot_is_empty(
   }
 }
 
+pub fn quoot_is_even(
+  env: &Env,
+  args: &QuootStrictList,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match eval(env, args.front().unwrap())?.as_num("even?")? {
+        Num::Int(i) => i % 2 == 0,
+        Num::Float(f) => f % 2.0 == 0.0,
+      },
+    )),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "even?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn quoot_first(
   env: &Env,
   args: &QuootStrictList,
@@ -877,7 +907,7 @@ pub fn quoot_reverse(
     1 => {
       let list = &mut eval(env, args.front().unwrap())?
         .as_list("reverse")?
-        .to_strict()?;
+        .as_strict()?;
       let new_list = &mut QuootStrictList::new();
       while let Some(value) = list.pop_front() {
         new_list.push_front(value);
@@ -939,6 +969,59 @@ pub fn quoot_abs(
   }
 }
 
+pub fn quoot_filter(
+  env: &Env,
+  args: &QuootStrictList,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let predicate = eval(env, args.front().unwrap())?.as_fn("filter")?;
+    let list = eval(env, args.get(1).unwrap())?.as_list("filter")?;
+    let initial_builder_values = &mut QuootStrictList::new();
+    initial_builder_values.push_back(QuootValue::Num(Num::Int(0)));
+    initial_builder_values.push_back(QuootValue::List(list));
+    initial_builder_values.push_back(QuootValue::Fn(predicate));
+    Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+      &|state| {
+        let builder_values =
+          state.builder_values.clone().unwrap().as_strict()?;
+        let mut index =
+          builder_values.front().unwrap().as_num("filter")?.floor();
+        let original_list = builder_values.get(1).unwrap().as_list("filter")?;
+        let predicate = builder_values.get(2).unwrap().as_fn("filter")?;
+        while let Some(value) = original_list.get(index)? {
+          if predicate(
+            &state.captured_environment.clone().unwrap(),
+            &QuootStrictList::unit(value.clone()),
+          )?
+          .as_bool()
+          {
+            let mut new_builder_values = QuootStrictList::new();
+            new_builder_values.push_back(QuootValue::Num(Num::Int(index + 1)));
+            new_builder_values.push_back(QuootValue::List(original_list));
+            new_builder_values.push_back(QuootValue::Fn(predicate));
+            state.builder_values = Some(QuootList::Strict(new_builder_values));
+            state.realized_values.push_back(value);
+            return Ok(());
+          }
+          index += 1;
+        }
+        state.is_finished = true;
+        Ok(())
+      },
+      QuootLazyState::new(
+        QuootStrictList::new(),
+        Some(QuootList::Strict(initial_builder_values.to_owned())),
+        Some(env.clone()),
+      ),
+    ))))
+  } else {
+    Err(QuootEvalError::FunctionError(format!(
+      "filter: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn default_bindings() -> Bindings {
   let bindings = &mut Bindings::new();
   bindings.insert(
@@ -981,6 +1064,7 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("symbol?".to_owned(), QuootValue::Fn(&quoot_is_symbol));
   bindings.insert("fn?".to_owned(), QuootValue::Fn(&quoot_is_fn));
   bindings.insert("empty?".to_owned(), QuootValue::Fn(&quoot_is_empty));
+  bindings.insert("even?".to_owned(), QuootValue::Fn(&quoot_is_even));
   bindings.insert("bool".to_owned(), QuootValue::Fn(&quoot_bool));
   bindings.insert("int".to_owned(), QuootValue::Fn(&quoot_int));
   bindings.insert("abs".to_owned(), QuootValue::Fn(&quoot_abs));
@@ -988,5 +1072,6 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("last".to_owned(), QuootValue::Fn(&quoot_last));
   bindings.insert("rest".to_owned(), QuootValue::Fn(&quoot_rest));
   bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));
+  bindings.insert("filter".to_owned(), QuootValue::Fn(&quoot_filter));
   bindings.to_owned()
 }

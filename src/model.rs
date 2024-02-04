@@ -49,10 +49,10 @@ pub enum Num {
 }
 
 impl QuootList {
-  pub fn to_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
+  pub fn as_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
     match self {
       QuootList::Strict(list) => Ok(list.clone()),
-      QuootList::Lazy(list) => Ok(list.to_strict()?),
+      QuootList::Lazy(list) => Ok(list.as_strict()?),
     }
   }
   pub fn is_empty(&self) -> Result<bool, QuootEvalError> {
@@ -62,27 +62,17 @@ impl QuootList {
         if list.realized_len() > 0 {
           true
         } else {
-          list.clone().realize()?.is_none()
+          !list.clone().realize()?
         }
       }
     })
   }
-  pub fn get(&self, n: i64) -> Result<QuootValue, QuootEvalError> {
+  pub fn get(&self, n: i64) -> Result<Option<QuootValue>, QuootEvalError> {
     match self {
-      QuootList::Strict(strict_list) => match strict_list.get(n as usize) {
-        Some(value) => Ok(value.to_owned()),
-        None => Err(QuootEvalError::OutOfBoundsError(
-          n,
-          strict_list.len() as i64,
-        )),
-      },
-      QuootList::Lazy(lazy_list) => match lazy_list.get(n as usize)? {
-        Some(value) => Ok(value.to_owned()),
-        None => Err(QuootEvalError::OutOfBoundsError(
-          n,
-          lazy_list.realized_len() as i64,
-        )),
-      },
+      QuootList::Strict(strict_list) => {
+        Ok(strict_list.get(n as usize).map(|e| e.clone()))
+      }
+      QuootList::Lazy(lazy_list) => lazy_list.get(n as usize),
     }
   }
   pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
@@ -99,7 +89,7 @@ impl QuootList {
 
 impl PartialEq for QuootList {
   fn eq(&self, other: &Self) -> bool {
-    self.to_strict() == other.to_strict()
+    self.as_strict() == other.as_strict()
   }
 }
 
@@ -206,7 +196,14 @@ impl QuootValue {
         Ok(Box::leak(Box::new(
           move |_env: &Env, args: &QuootStrictList| {
             if args.len() == 1 {
-              cloned_list.get(args.front().unwrap().as_num("<List>")?.floor())
+              let index = args.front().unwrap().as_num("<List>")?.floor();
+              match cloned_list.get(index)? {
+                Some(value) => Ok(value),
+                None => Err(QuootEvalError::OutOfBoundsError(
+                  index,
+                  cloned_list.as_strict()?.len() as i64,
+                )),
+              }
             } else {
               Err(QuootEvalError::FunctionError(format!(
                 "<List>: need 1 argument, got {}",
@@ -369,61 +366,70 @@ impl Num {
   }
 }
 
+#[derive(Clone)]
+pub struct QuootLazyState {
+  pub realized_values: QuootStrictList,
+  pub builder_values: Option<QuootList>,
+  pub captured_environment: Option<Env>,
+  pub is_finished: bool,
+}
+impl QuootLazyState {
+  pub fn new(
+    prerealized_values: QuootStrictList,
+    initial_builder_values: Option<QuootList>,
+    env: Option<Env>,
+  ) -> QuootLazyState {
+    QuootLazyState {
+      realized_values: prerealized_values,
+      builder_values: initial_builder_values,
+      captured_environment: env,
+      is_finished: false,
+    }
+  }
+}
 pub type QuootLazyRealizer =
-  &'static dyn Fn(
-    QuootStrictList,
-    Option<QuootList>,
-  ) -> Result<Option<QuootValue>, QuootEvalError>;
+  &'static dyn Fn(&mut QuootLazyState) -> Result<(), QuootEvalError>;
 #[derive(Clone)]
 pub struct QuootLazyList {
-  state: Arc<RwLock<(QuootStrictList, Option<QuootList>, bool)>>,
+  state: Arc<RwLock<QuootLazyState>>,
   realizer: QuootLazyRealizer,
 }
 
 impl QuootLazyList {
   pub fn new(
     realizer: QuootLazyRealizer,
-    state: (QuootStrictList, Option<QuootList>),
+    state: QuootLazyState,
   ) -> QuootLazyList {
     QuootLazyList {
-      state: Arc::new(RwLock::new((state.0, state.1, false))),
+      state: Arc::new(RwLock::new(state)),
       realizer,
     }
   }
   pub fn realized_len(&self) -> usize {
-    (*(*self.state).read().unwrap()).0.len()
+    (*(*self.state).read().unwrap()).realized_values.len()
   }
-  fn realize(&self) -> Result<Option<&QuootLazyList>, QuootEvalError> {
-    println!("realizing!!!");
+  fn realize(&self) -> Result<bool, QuootEvalError> {
     let state = &mut (*self.state).write().unwrap();
-    if state.2 {
-      Ok(Some(self))
-    } else {
-      let new_value = (self.realizer)(state.0.clone(), state.1.clone())?;
-      match new_value {
-        None => Ok(None),
-        Some(value) => {
-          state.0.push_back(value);
-          Ok(Some(self))
-        }
-      }
+    if !state.is_finished {
+      (self.realizer)(state)?
     }
+    Ok(state.is_finished)
   }
   pub fn realize_to(
     &self,
     length: usize,
   ) -> Result<Option<&QuootLazyList>, QuootEvalError> {
-    while (*self.state.read().unwrap()).0.len() < length {
-      if self.realize()?.is_none() {
+    while (*self.state.read().unwrap()).realized_values.len() < length {
+      if self.realize()? {
         return Ok(None);
       }
     }
     Ok(Some(self))
   }
   pub fn fully_realize(&self) -> Result<&QuootLazyList, QuootEvalError> {
-    while self.realize()?.is_some() {}
+    while !self.realize()? {}
     let state = &mut (*self.state).write().unwrap();
-    state.2 = true;
+    state.is_finished = true;
     Ok(self)
   }
   pub fn get(
@@ -431,27 +437,45 @@ impl QuootLazyList {
     index: usize,
   ) -> Result<Option<QuootValue>, QuootEvalError> {
     self.realize_to(index + 1)?;
-    Ok(self.state.read().unwrap().0.get(index).map(|e| e.clone()))
+    Ok(
+      self
+        .state
+        .read()
+        .unwrap()
+        .realized_values
+        .get(index)
+        .map(|e| e.clone()),
+    )
   }
   pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
     let state = (*self.state).read().unwrap();
-    let cloned_values = &mut state.0.clone();
+    let cloned_values = &mut state.realized_values.clone();
     cloned_values.pop_front();
-    if state.2 {
+    if state.is_finished {
       Ok(QuootList::Strict(cloned_values.clone()))
     } else {
       Ok(QuootList::Lazy(QuootLazyList::new(
-        &|values, maybe_state| match maybe_state {
-          Some(state) => Ok(Some(state.get(values.len() as i64 + 1)?)),
-          None => Ok(None),
+        &|state| match &state.builder_values {
+          Some(builder_state) => {
+            match builder_state.get(state.realized_values.len() as i64 + 1)? {
+              Some(new_value) => state.realized_values.push_back(new_value),
+              None => state.is_finished = true,
+            }
+            Ok(())
+          }
+          None => unreachable!(),
         },
-        (cloned_values.clone(), Some(QuootList::Lazy(self.clone()))),
+        QuootLazyState::new(
+          cloned_values.clone(),
+          Some(QuootList::Lazy(self.clone())),
+          None,
+        ),
       )))
     }
   }
-  pub fn to_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
+  pub fn as_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
     self.fully_realize()?;
-    Ok(self.state.read().unwrap().0.clone())
+    Ok(self.state.read().unwrap().realized_values.clone())
   }
 }
 
@@ -462,7 +486,7 @@ pub fn eval(
   match value {
     QuootValue::Symbol(name) => env.get(&name).map(|v| v.clone()),
     QuootValue::List(list) => {
-      let values = list.to_strict()?;
+      let values = list.as_strict()?;
       match values.front() {
         None => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new()))),
         Some(first_value) => {
