@@ -13,7 +13,7 @@ pub enum QuootValue {
   String(String),
   Symbol(String),
   List(QuootList),
-  Fn(QuootFn),
+  Fn(QuootOp),
 }
 
 #[derive(Debug, PartialEq)]
@@ -32,8 +32,11 @@ pub enum QuootList {
 }
 
 pub type QuootStrictList = Vector<QuootValue>;
-pub type QuootFn =
-  &'static dyn Fn(&Env, &QuootStrictList) -> Result<QuootValue, QuootEvalError>;
+pub type QuootOp = &'static dyn Fn(
+  &Env,
+  &QuootStrictList,
+  bool,
+) -> Result<QuootValue, QuootEvalError>;
 
 pub type Bindings = HashMap<String, QuootValue>;
 
@@ -188,13 +191,13 @@ impl QuootValue {
       }
     }
   }
-  pub fn as_fn(&self, error_prefix: &str) -> Result<QuootFn, QuootEvalError> {
+  pub fn as_fn(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
     match self {
       QuootValue::Fn(f) => Ok(f.clone()),
       QuootValue::List(list) => {
         let cloned_list = list.clone();
         Ok(Box::leak(Box::new(
-          move |_env: &Env, args: &QuootStrictList| {
+          move |_env: &Env, args: &QuootStrictList, _eval_args| {
             if args.len() == 1 {
               let index = args.front().unwrap().as_num("<List>")?.floor();
               match cloned_list.get(index)? {
@@ -493,10 +496,22 @@ pub fn eval(
           let f = eval(env, first_value)?.as_fn("eval")?;
           let cloned_values = &mut values.clone();
           cloned_values.pop_front();
-          f(env, cloned_values)
+          f(env, cloned_values, true)
         }
       }
     }
     other => Ok(other.to_owned()),
+  }
+}
+
+pub fn maybe_eval(
+  env: &Env,
+  value: &QuootValue,
+  should_eval: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if should_eval {
+    eval(env, value)
+  } else {
+    Ok(value.to_owned())
   }
 }

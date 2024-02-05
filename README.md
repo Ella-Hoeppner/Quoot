@@ -78,14 +78,17 @@ Quoot is still in early development and is missing many core features, but as so
   * A DSL for LLVM IR. This will allow Quoot to be used to generate optimally performant cross-platform assembly code. This DSL may be useful directly for programming some sufficiently simple algorithms, but mainly will exist to provide a convenient compilation target for other, higher-level Quoot DSLs.
   * Potentially, a DSL for some higher-level systems language like C, Zig, or Rust.
 
-In addition to these goals, Quoot also aims to be a fairly performant general-purpose programming language with a relatively light-weight runtime. Needless to say, Quoot will be as good for metaprogramming itself as it will be for metaprogramming other languages, and aims to be as ergonomic and easy to use as the best Lisps available today, so there shouldn't be any issue with using Quoot for building sophisticated programs, rather than being used purely for metaprogramming embedded DSLs. However, quoot is interpreted, and while I intend to keep the overhead small and make it as performant as is reasonably possible, pure Quoot programs will likely not be able to compete in terms of speed with code written in well-optimized compiled Lisps, and certainly not with systems languages like C or Rust. Thankfully, Quoot does have a potential path to being a very performance-competitive language: offloading performance-critical parts of an algorithm to other programs, written with a Quoot DSL for a more performant language. If a Quoot program has a performance bottleneck around a particular part of the algorithm, you could simply write that part of the algorithm in a Quoot DSL for C or some other high-performance language, or the LLVM DSL if the algorithm is simple enough, or even the WGSL DSL if the algorithm is a good fit for GPU parallelization. Ideally, it will be easy to execute programs written in these foreign-language DSLs from within Quoot programs, making it possible to seamlessly integrate highly performant programs as components of a Quoot program. In this way, you could create a very efficient Quoot program consisting of one or more special-purpose subprograms in written in Quoot DSLs for highly-performant languages, that are all tied together using the Quoot runtime as a lightweight glue. However, this vision is a long way off, and will require significant work on supplementary libraries and tooling for Quoot even after the core language is mature.
+In addition to these goals, Quoot also aims to be a fairly performant general-purpose programming language with a relatively light-weight runtime. Needless to say, Quoot will be as good for metaprogramming itself as it will be for metaprogramming other languages, and aims to be as ergonomic and easy to use as the best Lisps available today, so there shouldn't be any issue with using Quoot for building sophisticated software, rather than being used purely for metaprogramming embedded DSLs. However, quoot is interpreted, and while I intend to keep the overhead small and make it as performant as is reasonably possible, pure Quoot programs will likely not be able to compete in terms of speed with code written in well-optimized compiled Lisps, and certainly not with systems languages like C or Rust. Thankfully, Quoot does have a potential path to being a very performance-competitive language: offloading performance-critical parts of an algorithm to other programs, written with a Quoot DSL for a more performant language. If a Quoot program has a performance bottleneck around a particular part of the algorithm, you could simply write that part of the algorithm in a Quoot DSL for C or some other high-performance language, or the LLVM DSL if the algorithm is simple enough, or even the WGSL DSL if the algorithm is a good fit for GPU parallelization. Ideally, it will be easy to execute programs written in these foreign-language DSLs from within Quoot programs, making it possible to seamlessly integrate highly performant programs as components of a Quoot program. In this way, you could create a very efficient Quoot program consisting of one or more special-purpose subprograms in written in Quoot DSLs for highly-performant languages, that are all tied together using the Quoot runtime as a lightweight glue. However, this vision is a long way off, and will require significant work on supplementary libraries and tooling for Quoot even after the core language is mature.
 
 ## Feature goals:
 * Clojure-like syntax and ergonomics. This includes special delimiters for data structures like persistent vectors, sets, and hashmaps, and the ability to invoke these data structures as functions. Quoot also follows clojure in that functions mostly have names that are real words rather than Lisp jargon from the 70s, e.g. `first` and `rest` rather than `car` and `cdr`.
+  * However, Quoot's built-in data structures and syntax will diverge slightly from Clojure's.
+    * While Clojure has two sequential data types, lists and vectors, Quoot simply has one, which are referred to as "lists" for simplicty but are implemented as [RRB Vectors](https://dl.acm.org/doi/10.1145/2858949.2784739), using the [imbl crate](https://github.com/jneem/imbl). These support very fast lookups, modification, splitting, concatenation, and pushing and popping on both the front and the back, and therefore support the best features of Clojure's lists and vector simultaneously. Quoot also maintains support for lazy versions of these lists, whereas Clojure has no lazy vectors, only lazy lists. Since there is no separate vector type that would need its own syntax, Quoot uses the `[...]` delimiters as a syntax for list literals.
+    * Additionally, Quoot will include for ordered hashmaps, using `#[...]` delimiters.
 * An evaluation model inspired by [the vau calculus and the Kernel programming language](https://web.cs.wpi.edu/~jshutt/kernel.html), involving `operator`s that blurs the line between macros and functions.
   * In addition to `(fn [...] ...)` which defines a conventional lambda, `(operator [...] ...)` defines an operator that takes in it's arguments unevaluated, allowing for arbitrary processing of the internal AST (this is sometimes called an "fexpr" in older Lisps). `operator`s can always call `eval` on their arguments, and `fn` can be thought of as the special case of `operator` that always calls `eval` on all of it's arguments. Unlike macros, Quoots `operator`s are first-class objects that can be interacted with at runtime.
-  * Among other consequences, this means that operators like `or` can seamlessly be used as arguments to higher-order functions, which isn't the case in most other Lisps where they're implemented as macros. If the first argument to `or` evaluates to `true`, then it doesn't matter what the rest of the arguments evaluate to, so their evaluation can be skipped to save performance. But it isn't possible to express this behavior inside a lambda, and so most lisps implement `or` as a macro instead. However, that means that code like `(map or '(true false) '(true true))` doesn't work, as `or` isn't a function and therefore can't be passed to `map`. But in quoot, `operator`s can decide for themselves whether or not to evaluate their arguments, so `or` can avoid unnecessarily evaluating it's arguments while still acting like as a first-class object that has no trouble being composed with higher-order functions. `(map or '(true false) '(true true))` will run fine in Quoot, but not in Scheme, or Common Lisp, or Clojure (at least, not without creating a lambda that wraps `or`, which is ugly and inelegant).
-  * This does mean that syntactic abstractions defined with `operator` have an associated run-time cost, rather than being fully expanded at compile-time like traditional macros. Therefore, Quoot will also include `macro`s as a special case of operators that can be expanded at compile-time for cases where maximal performance is important.
+  * Among other consequences, this means that operators like `or` can seamlessly be used as arguments to higher-order functions, which isn't the case in most other Lisps where they're implemented as macros. If the first argument to `or` evaluates to `true`, then it doesn't matter what the rest of the arguments evaluate to, so their evaluation can be skipped to save performance. But it isn't possible to express this behavior inside a lambda, and so most lisps implement `or` as a macro instead. However, that means that code like `(map or '(true false) '(true true))` doesn't work, as `or` isn't a function and therefore can't be passed to `map`. But in quoot, `operator`s can decide for themselves whether or not to evaluate their arguments, so `or` can avoid unnecessarily evaluating it's arguments while still acting like as a first-class object that has no trouble being composed with higher-order functions. `(map or '(true false) '(true true))` will run fine in Quoot, but not in Scheme, Common Lisp, or Clojure (at least, not without creating a lambda that wraps `or`, which is ugly and inelegant).
+  * This does mean that syntactic abstractions defined with `operator` have an associated run-time cost, rather than being fully expanded at compile-time like traditional macros. However, the semantics of traditional macros are, just like lambdas, a special case of the semantics of operators (specifically, the special case that calls `eval` once on a single subtree created as some combination of the argument subtrees). Therefore, Quoot will also include a `macro` special form that encapsulates this special case and can be expanded in a pre-processing stage for cases where maximal performance is important.
 * Powerful, ergonomic, and concise metaprogramming via a top-level unquote operator.
   * Using an unquote at the top-level (i.e. not inside a quoted form), which would simply cause an error in most Lisps, instead indicates that the unquoted form should be evaluated in a pre-processing step before the rest of the code is evaluated. This can accomplish things similar to traditional macros, but can be much more concise while still being very readable (arguably moreso than traditional macros in many cases). This can often allow you to eliminate local repeated code in a very concise way, which otherwise would require a one-off macro that looks clunky and crowds up the namespace.
   * Consider a clojure expression like:
@@ -107,7 +110,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
                   (repeatedly rand))]
       ...)
     ```
-    There is quote a bit of repetition in the definition of these bindings: all three call `map` with three arguments, where the second argument is a call to `range`, though with varying arguments, and the first argument is a function that defines a local binding `z` as the first argument times 3, then returns a value constructed from `z` and the second argument. It would be nice to be able to express this program in a way that abstracts away this repetition. One way to do that would be by defining a new function that accepts all the different bits between the different bindings as arguments, and define `a` `b` and `c` by mapping with that function:
+    There is quote a bit of repetition in the definition of these bindings: all three call `map` with three arguments, where the second argument is a call to `range`, though with varying arguments, and the function passed to `map` creates a local binding `z` equal to the first argument times 3, then returns a value constructed from `z` and the second argument. It would be nice to be able to express this program in a way that abstracts away this repetition. One way to do that would be by defining a new function that accepts all the differing bits between the different bindings as arguments, and define `a` `b` and `c` by mapping with that function:
     ```
     (let [[a b c] (map (fn [inner-fn range-args y-values]
                           (map (fn [x y]
@@ -136,7 +139,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
                   
       ...)
     ```
-    This solution avoids the runtime performance cost of the prior approach because this code turns into the original code during macroexpansion, but it seems clunky to define an entire macro for something so specific that will never be used in another part of the code base. Additionally, it makes the code harder to read because the macro is defined separately from where it's being used, and the expressions in the call to the macro involve the symbol `z`, which doesn't have any clear meaning without looking at the details of the macro definition. Further, It also gives us a naming problem that we didn't have with the previous map-based solution - what should this macro be called? Here I've called it `my-macro`, but that wouldn't be a good name to include in a real codebase. But it's very difficult to come up with a reasonable name that accurately describes what role this macro actually serves, because it's purpose is so specific to this one circumstance.
+    This solution avoids the runtime performance cost of the prior approach because this code turns into the original code during macroexpansion, but it seems clunky to define an entire macro for something so specific that will never be used in another part of the code base. Additionally, it makes the code harder to read because the macro is defined separately from where it's being used, and the expressions in the call to the macro involve the symbol `z`, which isn't bound where the macro is called and doesn't have any clear meaning without looking at the details of the macro definition. Further, It also gives us a naming problem that we didn't have with the previous map-based solution - what should this macro be called? Here I've called it `my-macro`, but that wouldn't be a good name to include in a real codebase. But it's very difficult to come up with a reasonable name that accurately describes what role this macro actually serves, because it's purpose is so specific to this one circumstance.
 
     However, there is a way to avoid the runtime hit and the clunkiness that comes with defining a macro. Imagine that this entire form existed inside a quasiquote, say as part of some broader enclosing macro. This would allow us to use unquotes, which would open up a new way of writing something that expands at compile time to the original code:
     ```
@@ -148,75 +151,60 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
                                     (apply range ~@range-args)
                                     ~y-values))
                             [[(str z y) [4 7] ["a" "b" "c"]]
-                            [(vector y z) [13 18] [2 -3 4 10 1]]
-                            [(Math/pow y z) [100] (repeatedly rand)]]))]
+                             [(vector y z) [13 18] [2 -3 4 10 1]]
+                             [(Math/pow y z) [100] (repeatedly rand)]]))]
       ...)
     ```
     This looks very similar to the first solution using a runtime call to `map`, but here the call to `map` evaluates at macroexpansion phase, and the resulting code at runtime is identical to what we started with, just like with the macro-based solution. And yet this approach avoids most of the issues of the macro solution, as the metaprogramming logic is expressed right where it's being used, there's no need to pick a name for a macro, and the use of the unbound `z` wouldn't be as confusing to someone looking at this code for the first time because it occurs inside an unquoted form, making it clear that some kind of metaprogramming shenanagins are going on.
     
-    Unfortunately, in Clojure and other Lisps, this expression would only be valid if the entire let block was itself enclosed in a greater quasi-quoted form, otherwise the unquote operator is undefined. So this kind of elegant metaprogramming solution wouldn't be available most of the time. But why does it need to be that way? The intended semantics of what's going on in the above code block are perfectly clear regardless of whether or not it ocurrs inside a broader quoted form: the unquoted code should be evaluated at a stage before the non-unquoted code. When used outside a quoted form, this simply means that it should happen before the interpreter even starts running the rest of the code, as with a macro invocation.
+    Unfortunately, in Clojure and other Lisps, this expression would only be valid if the entire let block was itself enclosed in a greater quasi-quoted form, otherwise the unquote operator is undefined. So this kind of elegant metaprogramming solution wouldn't be available most of the time. But why does it need to be that way? The intended semantics of what's going on in the above code block are perfectly clear regardless of whether or not it ocurrs inside a broader quoted form: the unquoted code should be evaluated at a stage before, and then inlined into, the surrounding code. When used outside a quoted form, this simply means that it should happen before the interpreter even starts running the rest of the code, as with a macro invocation.
 
     Quoot simply reifies this straightforward extension of the unquote semantics, and lets you use unquotes at the top level as a way to signify that the code should be run a stage before normal evaluation. In fact, you can even use multiple nested unquotes at the top-level, to have multiple stages of pre-processing before the normal code is evaluated.
 * Radically extensible syntax via custom delimiters and prefixes.
   * By default quoot will have the delimiters `(...)` for lists, `[...]` for literal lists (i.e. lists that don't get treated as a function application), `{...}` for hashmaps, `#[...]` for ordered hashmaps, and `#{...}` for sets. However, you can also introduce arbitrary new delimiters in your own code, using the `(#delimiter opening closing tag)` special form.
-  * For instance, `<` and `>` are normally treated as normal symbols that can be used as part of symbols. But if you were writing a DSL and wanted a delimiter that represented some special kind of form or data structure, you could declare `(#delimiter < > alligators)`. From then on, the parser would treat `<` and `>` as the opening and closing delimiters for a new type of form. Forms using these delimiters will be parsed as lists with the tag provided as their first element, e.g. a string like `<are scary!>` would be parsed as a list `(alligators are scary!)`.
-  * Similarly, `(#prefix prefix-marker tag)` can be used to introduce new unary prefix operators, like the quote and unquote operators `'` and `~`, such that forms marked with these prefixes expand to tagged lists. For instance, if you used `(#prefix @ dereference)`, then the string `@my-atom` will be parsed as `(dereference my-atom)`
+  * For instance, `<` and `>` are normally treated as normal symbols that can be used as part of symbols. But if you were writing a DSL and wanted a delimiter that represented some special kind of form or data structure, you could declare `(#delimiter < > alligators)`. From then on, the parser would treat `<` and `>` as the opening and closing delimiters for a new type of form. Forms using these delimiters will be parsed as lists with the provided tag as their first element, e.g. a string like `<are scary!>` would be parsed as a list `(alligators are scary!)`.
+  * Similarly, `(#prefix prefix-marker tag)` can be used to introduce new unary prefix operators, like the quote and unquote operators `'` and `~`, such that forms marked with these prefixes expand to tagged lists. For instance, if you used `(#prefix @ dereference)`, then the string `@my-atom` will be parsed as `(dereference my-atom)`.
   * Both custom delimiters and custom prefixes can be limited to only apply in certain scopes, rather than to the entire proceeding file. For instance, if you have an embedded DSL and some function or operator `process-my-dsl` for processing quoted programs in that DSL, you will be able to denote that the custom delimiters and prefixes for that language only apply inside `(process-my-dsl ...)` forms, and elsewhere the parsing will be unaffected.
-  * Unfortunately, this capability might make static analaysis very difficult.
-* Integrable with other Rust libraries. It should be easy to make Quoot bindings for arbitrary Rust structs. This will provide a path for creating tools that allows Quoot to be more closely integrated with the runtimes of foreign-language programs that it constructs.
+  * Unfortunately, this capability might make static analaysis very difficult or impossible.
+* Integrable with other Rust libraries. It should be easy to make Quoot bindings for arbitrary Rust structs. This will provide a path for creating tools that allows Quoot to be more closely integrated with the runtimes of the foreign-language programs that it constructs.
 
 ## To Do:
 ### high priority
-* figure out how to make my psuedo-vau-calculus evaluation model work with higher-order functions
-  * Example issue: `((. reverse (| list 2)) 1)` should work fine and give `(1 2)`, but it instead gives `FunctionError("eval: can't use type Integer as a function")`
-    * This is because `reverse`, like all other functions, calls `eval` on it's arguments, which is fine when they're unevaluated literals or application expressions that evaluate to lists, but is wrong when it gets `(2 1)` from the application of `(| list 2)` to `1`
-      * this problem wasn't evident when I did tests like `((. - +) 1 2 3)` because despite the fact that `-` evaluates the number that it gets from the result of `+`, numbers just evaluate to themselves
-  * I think this would be an issue for pretty much all the other standadd higher-order functions too, e.g. in `(map reverse [[1 2]])`, `reverse` would recieve the value `(1 2)` and try to evaluate it, resulting in an error like the above `(. reverse ...)` example
-  * I guess the a language like Kernal that uses the real vau calculus can handle this because of the fact that all applicatives are just wrapped operatives, so you could implement e.g. `compose` such that it calls unwrap on all but it's last operand
-    * I feel like the whole wrap/unwrap might involve too much overhead or just be too abstract/annoying for my use case. Not super interested in doing absolutely everything that the vau calculus can do, would just be nice to have first-class macro-like values...
-    * but also having to call unwrap in those cases to make those kinds of things work feels like it kinda kills part of what would be so cool about this system...
-      * e.g. I don't like how in clojure you can't use `and` and `or` like functions, e.g. you can't do `(map and [true true] [true false])`, but I figured with this kind of evaluation model you could. But if `map` calls `unwrap` on it's first operand, as I assume it would have to in a language like Kernel, then you still couldn't do `(map and ...)` because `and` wouldn't be an applicative and couldn't be `unwrap`ed
-        * need to read more about Kernel, it might have a clever solution to this kind of thing
-  * a potential solution:
-    * Have built-in functions take in a bool - call it `wrapped` - that describes whether they should evaluate their arguments or not. When `wrapped = true`, functions behave as they do now, but when `wrapped = false`, they don't evaluate their arguments. `wrapped` would be true when functions are invoked normally as part of an expression being evaluated, but higher-order functions like `map` and `comp` could pass `false` for wrapped when necessary.
-      * This would allow things like `(map and [true true] [true false])` to work while maintaining short-circuiting - `and` with `wrapped = true` would still skip evaluation of it's latter arguments after one turns out to be `true`. So I guess this is pretty different from Kernel's `unwrap`. Same thing should work for other things that want short-circuiting/conditional evaluation like `or`, `if`, and `cond`
-    * need to spend some time thinking this through, especially as it relates to user-defined lambdas and operators...
-      * I guess lambdas could just always evaluate their operands when `wrapped = true` and never when `wrapped = false`, don't see any problems there...
-      * Would user-defined operations need to accept the `wrapped` argument?
-        * if they don't then I guess it would be impossible for a user to implement a composable short-circuiting operator like `and` from within the language, but I'm not sure if that restriction matters all that much, since they should be able to build up operators with more complex short-circuting behavior out of the built-in short-circuiting operators.
-      * Kernel can have nested `wrap`s on an operative, and this system definitely wouldn't allow for anything like that. Not sure if that would make us lose much practically speaking though?
+* finish adding `eval_args` argument to standard functions
 * 2-argument signature for range
 * implement list functions handling of lazy lists
   * functions to change:
-    * range, take, drop, rest, and concat, and cons should return lazy lists
-    * cons should be able to accept a lazy as the second arg
+    * take, drop, rest, concat, and cons should return lazy lists iff their inputs are lazy
     * last shouldn't clone when calling fully_realize
-* def
+  * add a `strict` function that fully realizes a lazy list, like clojure's `doall`
+* `def`
   * only usable as a top-level form
     * for now at least, could later try to let it be used as an alternate syntax for `let` that applies to anything after it in a block, like the HVM syntax
   * I think this will be one of the only operators that requires special logic?
-* eval function
+* `eval`
   * should optionally take an environment
     * guess I need to implement hashmaps first...
       * or just defer that case until later??
 * quoting
   * should basically just be an identity vau (i.e. doesn't eval it's arguments)
     * at least until we need to do unquoting
-* operator
-  * like a vau/fexpr, i.e. doesn't necessarily evaluate it's
-* lambdas
+* `operator`
+* `fn`
   * just an operator but it automatically evals it's arguments so it works like a lamba in a normal lisp
   * once this is done, translate my cljs kd-tree implementation to Quoot
     * run benchmarks for cljs, clj, and Quoot
 * think about whether there's a way to make a spread/unroll operator work
   * it's kinda like a macro but that applies to the parent form of where it's called... is there a way to fit this into the evaluation model?
 * more standard library functions:
-  * interleave (lazy)
-  * map (lazy)
-  * repeat (lazy)
-  * iterate (lazy)
-  * partition (lazy)
+  * interleave (lazy iff args are lazy)
+  * map (always lazy)
+  * repeat (lazy when unbounded)
+  * iterate (always lazy)
+  * partition (lazy iff args are lazy)
   * \>, \<, \>=, \<=
+  * and, or, not, xor
+    * should do the thing where these return the actual value, not the casted truth value
+  * if
   * drop-last, take-last
   * get-back
     * like nth but indexes go backwards from the end of the list
@@ -225,33 +213,29 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * like some, but the input fn should just return a bool, and it returns the argument that produced the first true from that fn
   * flatten
   * reduce
-  * subvec
-    * probably rename this
-      * sublist?
-      * maybe just sub?
-      * between?
+  * sublist
+    * like clojure's subvec, but only needs the 2-arg case because otherwise it's just drop
+    * lazy iff input is lazy
   * skip
-    * basically the opposite of subvec
+    * takes >=1 args, first must be a list and rest are indeces to skip
     * 2 args: list and an index, returns a list without the value at that index
     * 3 args: list, start, end, returns a list skipping the values between start and end
-    * should always return a lazy list
+    * lazy iff list is lazy
+  * skip-range
+    * 3 args, basically the opposite of sublist
+    * lazy iff list is lazy
   * set
     * like clojure's assoc, just shorter syntax
       * not sure what to rename clojure's "set" to, maybe "hash-set"?
         * a bit annoying to have this name collision, but "map" is already overloaded and doesn't refer to the data structure either so not having "set" be a constructor/caster doesn't seem like a big deal
     * maybe called "with" instead, set sounds side-effectful
   * update
-  * and, or, not, xor
-    * should do the clj thing where these return the actual value, not the casted truth value
-      * eg (or nil 5) should give 5
-    * at some point maybe these should be lazy/short-circuitable? probably need to wait for macros for that to be possible tho
-  * if
-    * will also eventually want a lazy/short-circuitable version of this
-  * rest
   * butlast
   * sort
   * sort-by
   * min-by
+    * takes a fn and a list, returns the item in list for which the fn returns the lowest value
+      * if a third argument is supplied and is truthy, this will return a pair of the minimum number and the corresponding value in the list that produced the number
   * max-by
 * should have functions for adding values to the front/back, with both possible argument orders
   * cases:
