@@ -846,7 +846,7 @@ pub fn quoot_apply(
       let f =
         maybe_eval(env, args.front().unwrap(), eval_args)?.as_fn("apply")?;
       let env_clone = env.clone();
-      Ok(QuootValue::Fn(Box::leak(Box::new(
+      Ok(QuootValue::Op(Box::leak(Box::new(
         move |_inner_env: &Env,
               inner_args: &QuootStrictList,
               _inner_eval_args: bool| {
@@ -873,7 +873,7 @@ pub fn quoot_apply(
       ))))
     }
     2 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
-      QuootValue::Fn(f) => f(
+      QuootValue::Op(f) => f(
         env,
         &maybe_eval(env, args.get(1).unwrap(), eval_args)?
           .as_list("apply")?
@@ -913,8 +913,8 @@ pub fn quoot_compose(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    0 => Ok(QuootValue::Fn(&quoot_identity)),
-    1 => Ok(QuootValue::Fn(
+    0 => Ok(QuootValue::Op(&quoot_identity)),
+    1 => Ok(QuootValue::Op(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_fn("compose")?,
     )),
     _ => {
@@ -925,7 +925,7 @@ pub fn quoot_compose(
         .collect::<Vec<Result<QuootOp, QuootEvalError>>>()
         .into_iter()
         .collect::<Result<Vec<QuootOp>, QuootEvalError>>()?;
-      Ok(QuootValue::Fn(Box::leak(Box::new(
+      Ok(QuootValue::Op(Box::leak(Box::new(
         move |inner_env: &Env,
               inner_args: &QuootStrictList,
               inner_eval_args: bool| {
@@ -957,13 +957,13 @@ pub fn quoot_partial(
     0 => Err(QuootEvalError::FunctionError(
       "partial: need at least 1 argument, got 0".to_owned(),
     )),
-    1 => Ok(QuootValue::Fn(
+    1 => Ok(QuootValue::Op(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_fn("partial")?,
     )),
     _ => {
       let values = &mut eval_all(env, args)?;
       let f = values.pop_front().unwrap().as_fn("partial")?;
-      Ok(QuootValue::Fn(partial(f, values.to_owned())))
+      Ok(QuootValue::Op(partial(f, values.to_owned())))
     }
   }
 }
@@ -1082,7 +1082,7 @@ pub fn quoot_is_symbol(
   }
 }
 
-pub fn quoot_is_fn(
+pub fn quoot_is_op(
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1090,12 +1090,12 @@ pub fn quoot_is_fn(
   match args.len() {
     1 => Ok(QuootValue::Bool(
       match maybe_eval(env, args.front().unwrap(), eval_args)? {
-        QuootValue::Fn(_) => true,
+        QuootValue::Op(_) => true,
         _ => false,
       },
     )),
     n => Err(QuootEvalError::FunctionError(format!(
-      "fn?: need 1 argument, got {}",
+      "op?: need 1 argument, got {}",
       n
     ))),
   }
@@ -1323,7 +1323,7 @@ pub fn quoot_filter(
     let initial_builder_values = &mut QuootStrictList::new();
     initial_builder_values.push_back(QuootValue::Num(Num::Int(0)));
     initial_builder_values.push_back(QuootValue::List(list));
-    initial_builder_values.push_back(QuootValue::Fn(predicate));
+    initial_builder_values.push_back(QuootValue::Op(predicate));
     Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
       &|state| {
         let builder_values =
@@ -1343,7 +1343,7 @@ pub fn quoot_filter(
             let mut new_builder_values = QuootStrictList::new();
             new_builder_values.push_back(QuootValue::Num(Num::Int(index + 1)));
             new_builder_values.push_back(QuootValue::List(original_list));
-            new_builder_values.push_back(QuootValue::Fn(predicate));
+            new_builder_values.push_back(QuootValue::Op(predicate));
             state.builder_values = Some(QuootList::Strict(new_builder_values));
             state.realized_values.push_back(value);
             return Ok(());
@@ -1373,51 +1373,51 @@ pub fn default_bindings() -> Bindings {
     "TAU".to_owned(),
     QuootValue::Num(Num::Float(6.283185307179586)),
   );
-  bindings.insert("let".to_owned(), QuootValue::Fn(&quoot_let));
-  bindings.insert("inc".to_owned(), QuootValue::Fn(&quoot_inc));
-  bindings.insert("dec".to_owned(), QuootValue::Fn(&quoot_dec));
-  bindings.insert("+".to_owned(), QuootValue::Fn(&quoot_add));
-  bindings.insert("*".to_owned(), QuootValue::Fn(&quoot_multiply));
-  bindings.insert("=".to_owned(), QuootValue::Fn(&quoot_equal));
-  bindings.insert("==".to_owned(), QuootValue::Fn(&quoot_numerical_equal));
-  bindings.insert("-".to_owned(), QuootValue::Fn(&quoot_subtract));
-  bindings.insert("/".to_owned(), QuootValue::Fn(&quoot_divide));
-  bindings.insert("min".to_owned(), QuootValue::Fn(&quoot_min));
-  bindings.insert("max".to_owned(), QuootValue::Fn(&quoot_max));
-  bindings.insert("mod".to_owned(), QuootValue::Fn(&quoot_modulo));
-  bindings.insert("quot".to_owned(), QuootValue::Fn(&quoot_quotient));
-  bindings.insert("list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
-  bindings.insert("#list".to_owned(), QuootValue::Fn(&quoot_list_constructor));
-  bindings.insert("count".to_owned(), QuootValue::Fn(&quoot_count));
-  bindings.insert("cons".to_owned(), QuootValue::Fn(&quoot_cons));
-  bindings.insert("concat".to_owned(), QuootValue::Fn(&quoot_concat));
-  bindings.insert("get".to_owned(), QuootValue::Fn(&quoot_get));
-  bindings.insert("take".to_owned(), QuootValue::Fn(&quoot_take));
-  bindings.insert("drop".to_owned(), QuootValue::Fn(&quoot_drop));
-  bindings.insert("strict".to_owned(), QuootValue::Fn(&quoot_strict));
-  bindings.insert("range".to_owned(), QuootValue::Fn(&quoot_range));
-  bindings.insert("identity".to_owned(), QuootValue::Fn(&quoot_identity));
-  bindings.insert("apply".to_owned(), QuootValue::Fn(&quoot_apply));
-  bindings.insert("partial".to_owned(), QuootValue::Fn(&quoot_partial));
-  bindings.insert("|".to_owned(), QuootValue::Fn(&quoot_partial));
-  bindings.insert("compose".to_owned(), QuootValue::Fn(&quoot_compose));
-  bindings.insert(".".to_owned(), QuootValue::Fn(&quoot_compose));
-  bindings.insert("nil?".to_owned(), QuootValue::Fn(&quoot_is_nil));
-  bindings.insert("bool?".to_owned(), QuootValue::Fn(&quoot_is_bool));
-  bindings.insert("list?".to_owned(), QuootValue::Fn(&quoot_is_list));
-  bindings.insert("num?".to_owned(), QuootValue::Fn(&quoot_is_num));
-  bindings.insert("str?".to_owned(), QuootValue::Fn(&quoot_is_string));
-  bindings.insert("symbol?".to_owned(), QuootValue::Fn(&quoot_is_symbol));
-  bindings.insert("fn?".to_owned(), QuootValue::Fn(&quoot_is_fn));
-  bindings.insert("empty?".to_owned(), QuootValue::Fn(&quoot_is_empty));
-  bindings.insert("even?".to_owned(), QuootValue::Fn(&quoot_is_even));
-  bindings.insert("bool".to_owned(), QuootValue::Fn(&quoot_bool));
-  bindings.insert("int".to_owned(), QuootValue::Fn(&quoot_int));
-  bindings.insert("abs".to_owned(), QuootValue::Fn(&quoot_abs));
-  bindings.insert("first".to_owned(), QuootValue::Fn(&quoot_first));
-  bindings.insert("last".to_owned(), QuootValue::Fn(&quoot_last));
-  bindings.insert("rest".to_owned(), QuootValue::Fn(&quoot_rest));
-  bindings.insert("reverse".to_owned(), QuootValue::Fn(&quoot_reverse));
-  bindings.insert("filter".to_owned(), QuootValue::Fn(&quoot_filter));
+  bindings.insert("let".to_owned(), QuootValue::Op(&quoot_let));
+  bindings.insert("inc".to_owned(), QuootValue::Op(&quoot_inc));
+  bindings.insert("dec".to_owned(), QuootValue::Op(&quoot_dec));
+  bindings.insert("+".to_owned(), QuootValue::Op(&quoot_add));
+  bindings.insert("*".to_owned(), QuootValue::Op(&quoot_multiply));
+  bindings.insert("=".to_owned(), QuootValue::Op(&quoot_equal));
+  bindings.insert("==".to_owned(), QuootValue::Op(&quoot_numerical_equal));
+  bindings.insert("-".to_owned(), QuootValue::Op(&quoot_subtract));
+  bindings.insert("/".to_owned(), QuootValue::Op(&quoot_divide));
+  bindings.insert("min".to_owned(), QuootValue::Op(&quoot_min));
+  bindings.insert("max".to_owned(), QuootValue::Op(&quoot_max));
+  bindings.insert("mod".to_owned(), QuootValue::Op(&quoot_modulo));
+  bindings.insert("quot".to_owned(), QuootValue::Op(&quoot_quotient));
+  bindings.insert("list".to_owned(), QuootValue::Op(&quoot_list_constructor));
+  bindings.insert("#list".to_owned(), QuootValue::Op(&quoot_list_constructor));
+  bindings.insert("count".to_owned(), QuootValue::Op(&quoot_count));
+  bindings.insert("cons".to_owned(), QuootValue::Op(&quoot_cons));
+  bindings.insert("concat".to_owned(), QuootValue::Op(&quoot_concat));
+  bindings.insert("get".to_owned(), QuootValue::Op(&quoot_get));
+  bindings.insert("take".to_owned(), QuootValue::Op(&quoot_take));
+  bindings.insert("drop".to_owned(), QuootValue::Op(&quoot_drop));
+  bindings.insert("strict".to_owned(), QuootValue::Op(&quoot_strict));
+  bindings.insert("range".to_owned(), QuootValue::Op(&quoot_range));
+  bindings.insert("identity".to_owned(), QuootValue::Op(&quoot_identity));
+  bindings.insert("apply".to_owned(), QuootValue::Op(&quoot_apply));
+  bindings.insert("partial".to_owned(), QuootValue::Op(&quoot_partial));
+  bindings.insert("|".to_owned(), QuootValue::Op(&quoot_partial));
+  bindings.insert("compose".to_owned(), QuootValue::Op(&quoot_compose));
+  bindings.insert(".".to_owned(), QuootValue::Op(&quoot_compose));
+  bindings.insert("nil?".to_owned(), QuootValue::Op(&quoot_is_nil));
+  bindings.insert("bool?".to_owned(), QuootValue::Op(&quoot_is_bool));
+  bindings.insert("list?".to_owned(), QuootValue::Op(&quoot_is_list));
+  bindings.insert("num?".to_owned(), QuootValue::Op(&quoot_is_num));
+  bindings.insert("str?".to_owned(), QuootValue::Op(&quoot_is_string));
+  bindings.insert("symbol?".to_owned(), QuootValue::Op(&quoot_is_symbol));
+  bindings.insert("op?".to_owned(), QuootValue::Op(&quoot_is_op));
+  bindings.insert("empty?".to_owned(), QuootValue::Op(&quoot_is_empty));
+  bindings.insert("even?".to_owned(), QuootValue::Op(&quoot_is_even));
+  bindings.insert("bool".to_owned(), QuootValue::Op(&quoot_bool));
+  bindings.insert("int".to_owned(), QuootValue::Op(&quoot_int));
+  bindings.insert("abs".to_owned(), QuootValue::Op(&quoot_abs));
+  bindings.insert("first".to_owned(), QuootValue::Op(&quoot_first));
+  bindings.insert("last".to_owned(), QuootValue::Op(&quoot_last));
+  bindings.insert("rest".to_owned(), QuootValue::Op(&quoot_rest));
+  bindings.insert("reverse".to_owned(), QuootValue::Op(&quoot_reverse));
+  bindings.insert("filter".to_owned(), QuootValue::Op(&quoot_filter));
   bindings.to_owned()
 }

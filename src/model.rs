@@ -13,7 +13,7 @@ pub enum QuootValue {
   String(String),
   Symbol(String),
   List(QuootList),
-  Fn(QuootOp),
+  Op(QuootOp),
 }
 
 #[derive(Debug, PartialEq)]
@@ -158,7 +158,7 @@ impl QuootValue {
         QuootList::Strict(_) => "List",
         QuootList::Lazy(_) => "LazyList",
       },
-      QuootValue::Fn(_) => "Function",
+      QuootValue::Op(_) => "Function",
     }
     .to_string()
   }
@@ -193,7 +193,7 @@ impl QuootValue {
   }
   pub fn as_fn(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
     match self {
-      QuootValue::Fn(f) => Ok(*f),
+      QuootValue::Op(f) => Ok(*f),
       QuootValue::List(list) => {
         let cloned_list = list.clone();
         Ok(Box::leak(Box::new(
@@ -268,7 +268,7 @@ impl fmt::Display for QuootValue {
       QuootValue::Bool(b) => {
         fmt.write_str(if *b { "true" } else { "false" })?
       }
-      QuootValue::Fn(_) => fmt.write_str("<Function>")?,
+      QuootValue::Op(_) => fmt.write_str("<Function>")?,
     }
     Ok(())
   }
