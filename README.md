@@ -170,7 +170,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* 2-argument signature for range
 * implement list functions handling of lazy lists
   * functions to change:
     * take, drop, rest, concat, and cons should return lazy lists iff their inputs are lazy

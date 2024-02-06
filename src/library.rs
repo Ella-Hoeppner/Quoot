@@ -612,17 +612,30 @@ pub fn quoot_range(
       QuootLazyState::new(QuootStrictList::new(), None, None),
     )))),
     1 => {
-      let list = &mut QuootStrictList::new();
-      for i in 0..maybe_eval(env, args.front().unwrap(), eval_args)?
+      let end = maybe_eval(env, args.front().unwrap(), eval_args)?
         .as_num("range")?
-        .floor()
-      {
-        list.push_back(QuootValue::Num(Num::Int(i)));
-      }
-      Ok(QuootValue::List(QuootList::Strict(list.to_owned())))
+        .floor();
+      Ok(QuootValue::List(QuootList::Strict(
+        (0..end)
+          .map(|e| QuootValue::Num(Num::Int(e)))
+          .collect::<QuootStrictList>(),
+      )))
+    }
+    2 => {
+      let start = maybe_eval(env, args.front().unwrap(), eval_args)?
+        .as_num("range")?
+        .floor();
+      let end = maybe_eval(env, args.get(1).unwrap(), eval_args)?
+        .as_num("range")?
+        .floor();
+      Ok(QuootValue::List(QuootList::Strict(
+        (start..end)
+          .map(|e| QuootValue::Num(Num::Int(e)))
+          .collect::<QuootStrictList>(),
+      )))
     }
     n => Err(QuootEvalError::FunctionError(format!(
-      "range: need 0 or 1 arguments, got {}",
+      "range: need 0, 1, or 2 arguments, got {}",
       n
     ))),
   }

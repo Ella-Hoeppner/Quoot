@@ -251,8 +251,8 @@ impl fmt::Display for QuootValue {
           if f.fract() == 0.0 { "." } else { "" }
         )),
       }?,
-      QuootValue::List(list) => match list {
-        QuootList::Strict(values) => {
+      QuootValue::List(list) => match list.as_strict() {
+        Ok(values) => {
           fmt.write_str("(")?;
           let mut separator = "";
           for value in values {
@@ -262,7 +262,7 @@ impl fmt::Display for QuootValue {
           }
           fmt.write_str(")")?;
         }
-        QuootList::Lazy(lazy_list) => fmt.write_str("<LazyList>")?,
+        Err(eval_error) => return Err(fmt::Error),
       },
       QuootValue::Nil => fmt.write_str("nil")?,
       QuootValue::Bool(b) => {
