@@ -39,6 +39,6 @@ pub fn repl() -> Result<()> {
       }
     }
   }
-  rl.save_history("history.txt");
+  rl.save_history("history.txt")?;
   Ok(())
 }

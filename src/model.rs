@@ -20,7 +20,7 @@ pub enum QuootValue {
 pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
-  AppliedUnapplicableError(String),
+  //AppliedUnapplicableError(String),
   FunctionError(String),
   OutOfBoundsError(i64, i64),
 }
@@ -193,7 +193,7 @@ impl QuootValue {
   }
   pub fn as_fn(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
     match self {
-      QuootValue::Fn(f) => Ok(f.clone()),
+      QuootValue::Fn(f) => Ok(*f),
       QuootValue::List(list) => {
         let cloned_list = list.clone();
         Ok(Box::leak(Box::new(
@@ -262,7 +262,7 @@ impl fmt::Display for QuootValue {
           }
           fmt.write_str(")")?;
         }
-        Err(eval_error) => return Err(fmt::Error),
+        Err(_) => return Err(fmt::Error),
       },
       QuootValue::Nil => fmt.write_str("nil")?,
       QuootValue::Bool(b) => {
@@ -417,6 +417,9 @@ impl QuootLazyList {
       (self.realizer)(state)?
     }
     Ok(state.is_finished)
+  }
+  pub fn is_fully_realized(&self) -> bool {
+    self.state.read().unwrap().is_finished
   }
   pub fn realize_to(
     &self,

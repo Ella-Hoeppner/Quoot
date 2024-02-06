@@ -500,11 +500,76 @@ pub fn quoot_concat(
   if args.len() == 0 {
     Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new())))
   } else {
-    let values = &mut maybe_eval_all(env, args, eval_args)?;
-    let concat_list =
-      &mut values.pop_front().unwrap().as_list("concat")?.as_strict()?;
-    while let Some(list) = values.pop_front() {
-      concat_list.append(list.as_list("concat")?.as_strict()?);
+    let mut values = maybe_eval_all(env, args, eval_args)?;
+    let mut concat_list = QuootStrictList::new();
+    while let Some(list_value) = values.pop_front() {
+      match list_value.as_list("concat")? {
+        QuootList::Strict(strict_list) => concat_list.append(strict_list),
+        QuootList::Lazy(lazy_list) => {
+          if lazy_list.is_fully_realized() {
+            concat_list.append(lazy_list.as_strict()?)
+          } else {
+            concat_list
+              .append(lazy_list.state.read().unwrap().realized_values.clone());
+            return Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+              &|lazy_state| {
+                let mut builder_values_strict =
+                  lazy_state.builder_values.as_ref().unwrap().as_strict()?;
+                let mut outer_index = builder_values_strict
+                  .get(0)
+                  .unwrap()
+                  .as_num("concat")?
+                  .floor();
+                let mut inner_index = builder_values_strict
+                  .get(1)
+                  .unwrap()
+                  .as_num("concat")?
+                  .floor();
+                loop {
+                  if outer_index as usize >= builder_values_strict.len() - 2 {
+                    lazy_state.is_finished = true;
+                    break;
+                  }
+                  let original_list = builder_values_strict
+                    .get(outer_index as usize + 2)
+                    .unwrap()
+                    .as_list("concat")?;
+                  match original_list.get(inner_index)? {
+                    Some(value) => {
+                      lazy_state.realized_values.push_back(value);
+                      builder_values_strict
+                        .set(0, QuootValue::Num(Num::Int(outer_index)));
+                      builder_values_strict
+                        .set(1, QuootValue::Num(Num::Int(inner_index + 1)));
+                      lazy_state.builder_values =
+                        Some(QuootList::Strict(builder_values_strict));
+                      break;
+                    }
+                    None => {
+                      outer_index += 1;
+                      inner_index = 0;
+                    }
+                  }
+                }
+                Ok(())
+              },
+              QuootLazyState::new(
+                concat_list.clone(),
+                Some(QuootList::Strict({
+                  let mut state_values = QuootStrictList::from(vec![
+                    QuootValue::Num(Num::Int(0)),
+                    QuootValue::Num(Num::Int(lazy_list.realized_len() as i64)),
+                    QuootValue::List(QuootList::Lazy(lazy_list)),
+                  ]);
+                  state_values.append(values);
+                  state_values
+                })),
+                Some(env.clone()),
+              ),
+            ))));
+          }
+        }
+      }
     }
     Ok(QuootValue::List(QuootList::Strict(concat_list.to_owned())))
   }
@@ -566,14 +631,13 @@ pub fn quoot_take(
         QuootList::Lazy(lazy_list) => QuootList::Lazy(QuootLazyList::new(
           &|lazy_state| {
             let builder_values = lazy_state.builder_values.clone().unwrap();
-            if lazy_state.realized_values.len() as i64
-              >= builder_values
-                .get(0)
-                .unwrap()
-                .unwrap()
-                .as_num("take")?
-                .floor()
-            {
+            let n = builder_values
+              .get(0)
+              .unwrap()
+              .unwrap()
+              .as_num("take")?
+              .floor();
+            if lazy_state.realized_values.len() as i64 >= n {
               lazy_state.is_finished = true;
             } else {
               let original_list =
@@ -670,6 +734,24 @@ pub fn quoot_drop(
       "drop: need 2 arguments, got {}",
       args.len()
     )))
+  }
+}
+
+pub fn quoot_strict(
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::List(QuootList::Strict(
+      maybe_eval(env, args.front().unwrap(), eval_args)?
+        .as_list("strict")?
+        .as_strict()?,
+    ))),
+    n => Err(QuootEvalError::FunctionError(format!(
+      "strict: need 1 argument, got {}",
+      n
+    ))),
   }
 }
 
@@ -802,7 +884,7 @@ pub fn quoot_compose(
     1 => Ok(QuootValue::Fn(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_fn("compose")?,
     )),
-    n => {
+    _ => {
       let fns = args
         .iter()
         .rev()
@@ -810,10 +892,6 @@ pub fn quoot_compose(
         .collect::<Vec<Result<QuootOp, QuootEvalError>>>()
         .into_iter()
         .collect::<Result<Vec<QuootOp>, QuootEvalError>>()?;
-      /*let mut f: QuootOp = fns[0];
-      for i in 1..n - 1 {
-        f = compose(f, fns[i]);
-      }*/
       Ok(QuootValue::Fn(Box::leak(Box::new(
         move |inner_env: &Env,
               inner_args: &QuootStrictList,
@@ -849,7 +927,7 @@ pub fn quoot_partial(
     1 => Ok(QuootValue::Fn(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_fn("partial")?,
     )),
-    n => {
+    _ => {
       let values = &mut eval_all(env, args)?;
       let f = values.pop_front().unwrap().as_fn("partial")?;
       Ok(QuootValue::Fn(partial(f, values.to_owned())))
@@ -1284,6 +1362,7 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("get".to_owned(), QuootValue::Fn(&quoot_get));
   bindings.insert("take".to_owned(), QuootValue::Fn(&quoot_take));
   bindings.insert("drop".to_owned(), QuootValue::Fn(&quoot_drop));
+  bindings.insert("strict".to_owned(), QuootValue::Fn(&quoot_strict));
   bindings.insert("range".to_owned(), QuootValue::Fn(&quoot_range));
   bindings.insert("identity".to_owned(), QuootValue::Fn(&quoot_identity));
   bindings.insert("apply".to_owned(), QuootValue::Fn(&quoot_apply));

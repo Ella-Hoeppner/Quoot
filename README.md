@@ -70,7 +70,7 @@ void main()
 }
 ```
 
-Of course, it would also be possible to generate a program like this with some other language that's hosting the GLSL app, like javascript, using string interpolation and/or concatenation. However, the corresponding program would be more complicated, less elegant, harder to read and maintain, and more prone to mistakes (e.g. a missing parentheses in the generated glsl, which can never happen when using kudzu). Working directly with ASTs can make it easy to build sophisticated metaprogramming systems that would be impossible to build in the core language, and infeasible to build with direct string manipulation in other languages. Quoot intends to leverage the power of lisp-style metaprogramming for languages that are indepdent of the it's own runtime.
+Of course, it would also be possible to generate a program like this with some other language that's hosting the GLSL app, like javascript, using string interpolation and/or concatenation. However, the corresponding program would be more complicated, less elegant, harder to read and maintain, and more prone to mistakes (e.g. a missing parentheses in the generated glsl, which can never happen when using kudzu). Working directly with ASTs can make it easy to build sophisticated metaprogramming systems that would be impossible to build in the core language, and infeasible to build with direct string manipulation in other languages. Quoot intends to leverage the power of lisp-style metaprogramming for languages that are indepdent of the its own runtime.
 
 Quoot is still in early development and is missing many core features, but as soon as it's mature enough, there are several DSLs I plan to make:
   * A DSL for WGSL, the shader language for WebGPU, so that Quoot can be used to build cross-platform high-performance graphics programs, acting as a metaprogramming layer that allows for powerful new abstractions that are unavailable in normal shader code.
@@ -172,7 +172,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 ### high priority
 * implement list functions handling of lazy lists
   * functions to change:
-    * rest, concat, and cons should return lazy lists iff their inputs are lazy
+    * cons should return lazy lists iff its inputs are lazy
     * last shouldn't clone when calling fully_realize
   * add a `strict` function that fully realizes a lazy list, like clojure's `doall`
 * `eval`
@@ -227,8 +227,12 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
       * not sure what to rename clojure's "set" to, maybe "hash-set"?
         * a bit annoying to have this name collision, but "map" is already overloaded and doesn't refer to the data structure either so not having "set" be a constructor/caster doesn't seem like a big deal
     * maybe called "with" instead, set sounds side-effectful
+    * I guess this should work with lazy lists?
+      * this seems silly but also pretty cool maybe?
   * update
+    * as with set, should work with lazy lists
   * butlast
+    * should work with lazy lists
   * sort
   * sort-by
   * min-by
@@ -358,6 +362,8 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * Can probably use the `QuootStrictList::from(vec![...])` constructor rather than repeated `push_front` or `push_back` calls in several places
   * in quoot_let, I don't think we need to create list_clone, can just call `.get` on the original reference rather than a bunch of `.pop_front`s
   * wherever I'm creating a vector iteratively with `.push_front` or `.push_back`, might be able to just use `Vector::from(vec![])`
+  * realize_to is always implemented as repeated calls to realize, but many of the lazy realizer functions could easily be modified to support mutli-element realization in a single call, which would save on overhead
+    * all lazy realizers could just accept another argument of the number of elements to realize, and the current realizers that can't easily be modified to support that could just iterate their current approach
 * what about allowing for `.` and `|` to be used as infix operators, within symbol names?
   * so like `+.-` would be equivalent to `(comp + -)`, and `+|1` would be `(partial + 1)`
   * I don't think we'll be using `|` for anything else so I guess that would be fine, takes it out of the pool of usable characters for symbol names tho...

@@ -6,5 +6,5 @@ mod parse;
 use interpreter::repl;
 
 fn main() {
-  repl();
+  let _ = repl();
 }
