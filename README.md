@@ -171,8 +171,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* lots of the code can probably be simplified with some implementations of `from`
-  * e.g. have a `QuootValue.from` for `QuootStrictList`, so that we can avoid writing `QuootValue::List(QuootList::Strict(strict_list))`
 * add another arity to `fn` that gives it an internal name, for recursion
   * to make this work I think we need to make QuootOp a struct with a closure, such that the closure accepts a reference to the QuootOp. Otherwise there's no way that the closure can reference itself, so recursion is impossible.
 * port cljs kd-tree implementation to quoot for a performance test

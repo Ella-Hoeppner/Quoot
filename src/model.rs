@@ -20,7 +20,6 @@ pub enum QuootValue {
 pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
-  //AppliedUnapplicableError(String),
   OperatorError(String),
   OutOfBoundsError(i64, i64),
   DefineError(String),
@@ -122,6 +121,36 @@ impl PartialEq for QuootValue {
       (Self::Symbol(a), Self::Symbol(b)) => a == b,
       _ => false,
     }
+  }
+}
+
+impl From<QuootStrictList> for QuootValue {
+  fn from(value: QuootStrictList) -> Self {
+    QuootValue::List(QuootList::Strict(value))
+  }
+}
+
+impl From<QuootLazyList> for QuootValue {
+  fn from(value: QuootLazyList) -> Self {
+    QuootValue::List(QuootList::Lazy(value))
+  }
+}
+
+impl From<i64> for QuootValue {
+  fn from(value: i64) -> Self {
+    QuootValue::Num(Num::Int(value))
+  }
+}
+
+impl From<f64> for QuootValue {
+  fn from(value: f64) -> Self {
+    QuootValue::Num(Num::Float(value))
+  }
+}
+
+impl From<usize> for QuootValue {
+  fn from(value: usize) -> Self {
+    QuootValue::from(value as i64)
   }
 }
 

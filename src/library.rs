@@ -573,9 +573,7 @@ pub fn quoot_list_constructor(
   args: &QuootStrictList,
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
-  Ok(QuootValue::List(QuootList::Strict(maybe_eval_all(
-    env, args, eval_args,
-  )?)))
+  Ok(QuootValue::from(maybe_eval_all(env, args, eval_args)?))
 }
 
 pub fn quoot_count(
@@ -585,16 +583,14 @@ pub fn quoot_count(
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
     match maybe_eval(env, args.front().unwrap(), eval_args)? {
-      QuootValue::Nil => Ok(QuootValue::Num(Num::Int(0))),
+      QuootValue::Nil => Ok(QuootValue::from(0i64)),
       QuootValue::List(QuootList::Strict(list)) => {
-        Ok(QuootValue::Num(Num::Int(list.len() as i64)))
+        Ok(QuootValue::from(list.len()))
       }
       QuootValue::List(QuootList::Lazy(list)) => {
         let cloned_list = &mut list.clone();
         let realized_list = cloned_list.fully_realize()?;
-        Ok(QuootValue::Num(Num::Int(
-          realized_list.realized_len() as i64
-        )))
+        Ok(QuootValue::from(realized_list.realized_len()))
       }
       v => Err(QuootEvalError::OperatorError(format!(
         "count: can't count type <{}>",
@@ -615,9 +611,11 @@ pub fn quoot_cons(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    1 => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::unit(
-      maybe_eval(env, args.front().unwrap(), eval_args)?,
-    )))),
+    1 => Ok(QuootValue::from(QuootStrictList::unit(maybe_eval(
+      env,
+      args.front().unwrap(),
+      eval_args,
+    )?))),
     2 => {
       let first_arg = maybe_eval(env, args.front().unwrap(), eval_args)?;
       let second_arg = maybe_eval(env, args.get(1).unwrap(), eval_args)?;
@@ -625,10 +623,10 @@ pub fn quoot_cons(
         QuootValue::List(QuootList::Strict(strict_list)) => {
           let mut list_clone = strict_list.clone();
           list_clone.push_front(first_arg);
-          Ok(QuootValue::List(QuootList::Strict(list_clone)))
+          Ok(QuootValue::from(list_clone))
         }
         QuootValue::List(QuootList::Lazy(lazy_list)) => {
-          Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+          Ok(QuootValue::from(QuootLazyList::new(
             &|lazy_state| {
               let original_list = lazy_state
                 .builder_values
@@ -658,11 +656,11 @@ pub fn quoot_cons(
               )))),
               Some(env.clone()),
             ),
-          ))))
+          )))
         }
-        QuootValue::Nil => Ok(QuootValue::List(QuootList::Strict(
-          QuootStrictList::unit(first_arg),
-        ))),
+        QuootValue::Nil => {
+          Ok(QuootValue::from(QuootStrictList::unit(first_arg)))
+        }
         _ => Err(QuootEvalError::OperatorError(format!(
           "cons: cannot cons onto a <{}>",
           second_arg.type_string()
@@ -682,7 +680,7 @@ pub fn quoot_concat(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 0 {
-    Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new())))
+    Ok(QuootValue::from(QuootStrictList::new()))
   } else {
     let mut values = maybe_eval_all(env, args, eval_args)?;
     let mut concat_list = QuootStrictList::new();
@@ -695,7 +693,7 @@ pub fn quoot_concat(
           } else {
             concat_list
               .append(lazy_list.state.read().unwrap().realized_values.clone());
-            return Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+            return Ok(QuootValue::from(QuootLazyList::new(
               &|lazy_state| {
                 let mut builder_values_strict =
                   lazy_state.builder_values.as_ref().unwrap().as_strict()?;
@@ -722,9 +720,9 @@ pub fn quoot_concat(
                     Some(value) => {
                       lazy_state.realized_values.push_back(value);
                       builder_values_strict
-                        .set(0, QuootValue::Num(Num::Int(outer_index)));
+                        .set(0, QuootValue::from(outer_index));
                       builder_values_strict
-                        .set(1, QuootValue::Num(Num::Int(inner_index + 1)));
+                        .set(1, QuootValue::from(inner_index + 1));
                       lazy_state.builder_values =
                         Some(QuootList::Strict(builder_values_strict));
                       break;
@@ -741,21 +739,21 @@ pub fn quoot_concat(
                 concat_list.clone(),
                 Some(QuootList::Strict({
                   let mut state_values = QuootStrictList::from(vec![
-                    QuootValue::Num(Num::Int(0)),
-                    QuootValue::Num(Num::Int(lazy_list.realized_len() as i64)),
-                    QuootValue::List(QuootList::Lazy(lazy_list)),
+                    QuootValue::from(0i64),
+                    QuootValue::from(lazy_list.realized_len()),
+                    QuootValue::from(lazy_list),
                   ]);
                   state_values.append(values);
                   state_values
                 })),
                 Some(env.clone()),
               ),
-            ))));
+            )));
           }
         }
       }
     }
-    Ok(QuootValue::List(QuootList::Strict(concat_list.to_owned())))
+    Ok(QuootValue::from(concat_list.to_owned()))
   }
 }
 
@@ -844,8 +842,8 @@ pub fn quoot_take(
                 .take(n.min(state.realized_values.len()))
             },
             Some(QuootList::Strict(QuootStrictList::from(vec![
-              QuootValue::Num(Num::Int(n as i64)),
-              QuootValue::List(QuootList::Lazy(lazy_list)),
+              QuootValue::from(n),
+              QuootValue::from(lazy_list),
             ]))),
             Some(env.clone()),
           ),
@@ -905,8 +903,8 @@ pub fn quoot_drop(
                 .skip(n.min(state.realized_values.len()))
             },
             Some(QuootList::Strict(QuootStrictList::from(vec![
-              QuootValue::Num(Num::Int(n as i64)),
-              QuootValue::List(QuootList::Lazy(lazy_list)),
+              QuootValue::from(n),
+              QuootValue::from(lazy_list),
             ]))),
             Some(env.clone()),
           ),
@@ -927,11 +925,11 @@ pub fn quoot_strict(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    1 => Ok(QuootValue::List(QuootList::Strict(
+    1 => Ok(QuootValue::from(
       maybe_eval(env, args.front().unwrap(), eval_args)?
         .as_list("strict")?
         .as_strict()?,
-    ))),
+    )),
     n => Err(QuootEvalError::OperatorError(format!(
       "strict: need 1 argument, got {}",
       n
@@ -945,24 +943,22 @@ pub fn quoot_range(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    0 => Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+    0 => Ok(QuootValue::from(QuootLazyList::new(
       &|state| {
-        state.realized_values.push_back(QuootValue::Num(Num::Int(
-          state.realized_values.len() as i64,
-        )));
+        state
+          .realized_values
+          .push_back(QuootValue::from(state.realized_values.len()));
         Ok(())
       },
       QuootLazyState::new(QuootStrictList::new(), None, None),
-    )))),
+    ))),
     1 => {
       let end = maybe_eval(env, args.front().unwrap(), eval_args)?
         .as_num("range")?
         .floor();
-      Ok(QuootValue::List(QuootList::Strict(
-        (0..end)
-          .map(|e| QuootValue::Num(Num::Int(e)))
-          .collect::<QuootStrictList>(),
-      )))
+      Ok(QuootValue::from(
+        (0..end).map(QuootValue::from).collect::<QuootStrictList>(),
+      ))
     }
     2 => {
       let start = maybe_eval(env, args.front().unwrap(), eval_args)?
@@ -971,11 +967,11 @@ pub fn quoot_range(
       let end = maybe_eval(env, args.get(1).unwrap(), eval_args)?
         .as_num("range")?
         .floor();
-      Ok(QuootValue::List(QuootList::Strict(
+      Ok(QuootValue::from(
         (start..end)
-          .map(|e| QuootValue::Num(Num::Int(e)))
+          .map(QuootValue::from)
           .collect::<QuootStrictList>(),
-      )))
+      ))
     }
     n => Err(QuootEvalError::OperatorError(format!(
       "range: need 0, 1, or 2 arguments, got {}",
@@ -1399,7 +1395,7 @@ pub fn quoot_reverse(
       while let Some(value) = list.pop_front() {
         new_list.push_front(value);
       }
-      Ok(QuootValue::List(QuootList::Strict(new_list.clone())))
+      Ok(QuootValue::from(new_list.clone()))
     }
     n => Err(QuootEvalError::OperatorError(format!(
       "reverse: need 1 argument, got {}",
@@ -1430,11 +1426,11 @@ pub fn quoot_int(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    1 => Ok(QuootValue::Num(Num::Int(
+    1 => Ok(QuootValue::from(
       maybe_eval(env, args.front().unwrap(), eval_args)?
         .as_num("int")?
         .floor(),
-    ))),
+    )),
     n => Err(QuootEvalError::OperatorError(format!(
       "int: need 1 argument, got {}",
       n
@@ -1472,10 +1468,10 @@ pub fn quoot_filter(
     let list =
       maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("filter")?;
     let initial_builder_values = &mut QuootStrictList::new();
-    initial_builder_values.push_back(QuootValue::Num(Num::Int(0)));
+    initial_builder_values.push_back(QuootValue::from(0i64));
     initial_builder_values.push_back(QuootValue::List(list));
     initial_builder_values.push_back(QuootValue::Op(predicate));
-    Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+    Ok(QuootValue::from(QuootLazyList::new(
       &|state| {
         let builder_values =
           state.builder_values.clone().unwrap().as_strict()?;
@@ -1492,7 +1488,7 @@ pub fn quoot_filter(
           .as_bool()
           {
             let mut new_builder_values = QuootStrictList::new();
-            new_builder_values.push_back(QuootValue::Num(Num::Int(index + 1)));
+            new_builder_values.push_back(QuootValue::from(index + 1));
             new_builder_values.push_back(QuootValue::List(original_list));
             new_builder_values.push_back(QuootValue::Op(predicate));
             state.builder_values = Some(QuootList::Strict(new_builder_values));
@@ -1509,7 +1505,7 @@ pub fn quoot_filter(
         Some(QuootList::Strict(initial_builder_values.to_owned())),
         Some(env.clone()),
       ),
-    ))))
+    )))
   } else {
     Err(QuootEvalError::OperatorError(format!(
       "filter: need 2 arguments, got {}",
@@ -1558,10 +1554,7 @@ pub fn quoot_if(
 
 pub fn default_bindings() -> Bindings {
   let bindings = &mut Bindings::new();
-  bindings.insert(
-    "TAU".to_owned(),
-    QuootValue::Num(Num::Float(6.283185307179586)),
-  );
+  bindings.insert("TAU".to_owned(), QuootValue::from(6.283185307179586));
   bindings.insert("let".to_owned(), QuootValue::Op(&quoot_let));
   bindings.insert("eval".to_owned(), QuootValue::Op(&quoot_eval));
   bindings.insert("quote".to_owned(), QuootValue::Op(&quoot_quote));
