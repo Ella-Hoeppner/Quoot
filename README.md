@@ -89,7 +89,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * In addition to `(fn [...] ...)` which defines a conventional lambda, `(operator [...] ...)` defines an operator that takes in it's arguments unevaluated, allowing for arbitrary processing of the internal AST (this is sometimes called an "fexpr" in older Lisps). `operator`s can always call `eval` on their arguments, and `fn` can be thought of as the special case of `operator` that always calls `eval` on all of it's arguments. Unlike macros, Quoots `operator`s are first-class objects that can be interacted with at runtime.
   * Among other consequences, this means that operators like `or` can seamlessly be used as arguments to higher-order functions, which isn't the case in most other Lisps where they're implemented as macros. If the first argument to `or` evaluates to `true`, then it doesn't matter what the rest of the arguments evaluate to, so their evaluation can be skipped to save performance. But it isn't possible to express this behavior inside a lambda, and so most lisps implement `or` as a macro instead. However, that means that code like `(map or '(true false) '(true true))` doesn't work, as `or` isn't a function and therefore can't be passed to `map`. But in quoot, `operator`s can decide for themselves whether or not to evaluate their arguments, so `or` can avoid unnecessarily evaluating it's arguments while still acting like as a first-class object that has no trouble being composed with higher-order functions. `(map or '(true false) '(true true))` will run fine in Quoot, but not in Scheme, Common Lisp, or Clojure (at least, not without creating a lambda that wraps `or`, which is ugly and inelegant).
   * This does mean that syntactic abstractions defined with `operator` have an associated run-time cost, rather than being fully expanded at compile-time like traditional macros. However, the semantics of traditional macros are, just like lambdas, a special case of the semantics of operators. Therefore, Quoot will also include a `macro` special form that encapsulates this special case and can be expanded in a pre-processing stage for cases where maximal performance is important.
-  * While Quoot's evaluation model is inspired by the vau calculus, it differs in important ways. The primary practical difference to the is that Quoot does not have an equivalent Kernel's `wrap` or `unwrap` operatives.
+  * While Quoot's evaluation model is inspired by the vau calculus, it differs in important ways. The primary practical difference is that Quoot does not have an equivalent Kernel's `wrap` or `unwrap` operatives. Also, Quoot encourages the use of quoting and unquoting operators, whereas Kernel does not implement them, and strongly discourages their use.
 * Powerful, ergonomic, and concise metaprogramming via a top-level unquote operator.
   * Using an unquote at the top-level (i.e. not inside a quoted form), which would simply cause an error in most Lisps, instead indicates that the unquoted form should be evaluated in a pre-processing step before the rest of the code is evaluated. This can accomplish things similar to traditional macros, but can be much more concise while still being very readable (arguably moreso than traditional macros in many cases). This can often allow you to eliminate local repeated code in a very concise way, which otherwise would require a one-off macro that looks clunky and crowds up the namespace.
   * Consider a clojure expression like:
@@ -111,7 +111,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
                   (repeatedly rand))]
       ...)
     ```
-    There is quote a bit of repetition in the definition of these bindings: all three call `map` with three arguments, where the second argument is a call to `range`, though with varying arguments, and the function passed to `map` creates a local binding `z` equal to the first argument times 3, then returns a value constructed from `z` and the second argument. It would be nice to be able to express this program in a way that abstracts away this repetition. One way to do that would be by defining a new function that accepts all the differing bits between the different bindings as arguments, and define `a` `b` and `c` by mapping with that function:
+    There is quite a bit of repetition in the definition of these bindings: all three call `map` with three arguments, where the second argument is a call to `range`, though with varying arguments, and the function passed to `map` creates a local binding `z` equal to the first argument times 3, then returns a value constructed from `z` and the second argument. It would be nice to be able to express this program in a way that abstracts away this repetition. One way to do that would be by defining a new function that accepts all the differing bits between the different bindings as arguments, and define `a` `b` and `c` by mapping with that function:
     ```
     (let [[a b c] (map (fn [inner-fn range-args y-values]
                           (map (fn [x y]
@@ -163,7 +163,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     Quoot simply reifies this straightforward extension of the unquote semantics, and lets you use unquotes at the top level as a way to signify that the code should be run a stage before normal evaluation. In fact, you can even use multiple nested unquotes at the top-level, to have multiple stages of pre-processing before the normal code is evaluated.
 * Radically extensible syntax via custom delimiters and prefixes.
   * By default quoot will have the delimiters `(...)` for lists, `[...]` for literal lists (i.e. lists that don't get treated as a function application), `{...}` for hashmaps, `#[...]` for ordered hashmaps, and `#{...}` for sets. However, you can also introduce arbitrary new delimiters in your own code, using the `(#delimiter opening closing tag)` special form.
-  * For instance, `<` and `>` are normally treated as normal symbols that can be used as part of symbols. But if you were writing a DSL and wanted a delimiter that represented some special kind of form or data structure, you could declare `(#delimiter < > alligators)`. From then on, the parser would treat `<` and `>` as the opening and closing delimiters for a new type of form. Forms using these delimiters will be parsed as lists with the provided tag as their first element, e.g. a string like `<are scary!>` would be parsed as a list `(alligators are scary!)`.
+  * For instance, `<` and `>` are normally treated as regular characters that can be used as part of symbols. But if you were writing a DSL and wanted a delimiter that represented some special kind of form or data structure, you could declare `(#delimiter < > alligators)`. From then on, the parser would treat `<` and `>` as the opening and closing delimiters for a new type of form. Forms using these delimiters will be parsed as lists with the provided tag as their first element, e.g. a string like `<are scary!>` would be parsed as a list `(alligators are scary!)`.
   * Similarly, `(#prefix prefix-marker tag)` can be used to introduce new unary prefix operators, like the quote and unquote operators `'` and `~`, such that forms marked with these prefixes expand to tagged lists. For instance, if you used `(#prefix @ dereference)`, then the string `@my-atom` will be parsed as `(dereference my-atom)`.
   * Both custom delimiters and custom prefixes can be limited to only apply in certain scopes, rather than to the entire proceeding file. For instance, if you have an embedded DSL and some function or operator `process-my-dsl` for processing quoted programs in that DSL, you will be able to denote that the custom delimiters and prefixes for that language only apply inside `(process-my-dsl ...)` forms, and elsewhere the parsing will be unaffected.
   * Unfortunately, this capability might make static analaysis very difficult or impossible.
@@ -171,7 +171,11 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
+* lots of the code can probably be simplified with some implementations of `from`
+  * e.g. have a `QuootValue.from` for `QuootStrictList`, so that we can avoid writing `QuootValue::List(QuootList::Strict(strict_list))`
 * add another arity to `fn` that gives it an internal name, for recursion
+  * to make this work I think we need to make QuootOp a struct with a closure, such that the closure accepts a reference to the QuootOp. Otherwise there's no way that the closure can reference itself, so recursion is impossible.
+* port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?
     * not really sure, probably worth trying
@@ -272,6 +276,8 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 * anonymous function shorthand syntax
   * want to use something other than clojure's `#(...)` to denote this, so that it can be used with data structures other than lists. E.g. in closure it would be nice if you could do `#[% 2]` to be the equivalent of `#(vector % 2)`. But this would break for hasmaps because `#{...}` overlaps with the set literal syntax. Would be nice to have another symbol that avoids that ambiguity so it can be composed with all the data structure literals.
     * Maybe just use `%(...)`? Since they can't be nested anyways this shouldn't cause any problems.
+* destructuring
+  * no idea how to approach this :O
 * atoms, I guess? Kinda don't want to but I guess theres hould be at least some way of having mutable state :(
 * more standard library functions:
   * interleave (lazy iff args are lazy)
@@ -279,10 +285,9 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * repeat (lazy when unbounded)
   * iterate (always lazy)
   * partition (lazy iff args are lazy)
-  * \>, \<, \>=, \<=
+  * \<, \>=, \<=
   * and, or, not, xor
     * should do the thing where these return the actual value, not the casted truth value
-  * if
   * drop-last, take-last
   * get-back
     * like nth but indexes go backwards from the end of the list

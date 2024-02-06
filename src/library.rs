@@ -118,45 +118,29 @@ pub fn quoot_let(
     let bindings = args.front().unwrap();
     match bindings {
       QuootValue::List(QuootList::Strict(list)) => {
-        let list_clone = &mut list.clone();
-        match list_clone.pop_front() {
-          Some(value) => {
-            if value.eq(&QuootValue::Symbol("#list".to_owned())) {
-              if list_clone.len() % 2 == 0 {
-                let sub_env = &mut env.clone();
-                while let Some(binding_name) = list_clone.pop_front() {
-                  match binding_name {
-                    QuootValue::Symbol(name) => {
-                      let binding_value = maybe_eval(
-                        env,
-                        &list_clone.pop_front().unwrap(),
-                        eval_args,
-                      )?;
-                      sub_env.bind(&name, binding_value);
-                    }
-                    other => {
-                      return Err(QuootEvalError::OperatorError(format!(
-                        "let: names must be symbols, got <{}>",
-                        other.type_string()
-                      )))
-                    }
-                  }
-                }
-                maybe_eval(sub_env, args.get(1).unwrap(), eval_args)
-              } else {
-                Err(QuootEvalError::OperatorError(format!(
-                  "let: first argument needs an even number of forms"
+        let mut list_clone = QuootList::deliteralize(list.clone());
+        if list_clone.len() % 2 == 0 {
+          let sub_env = &mut env.clone();
+          while let Some(binding_name) = list_clone.pop_front() {
+            match binding_name {
+              QuootValue::Symbol(name) => {
+                let binding_value =
+                  maybe_eval(env, &list_clone.pop_front().unwrap(), eval_args)?;
+                sub_env.bind(&name, binding_value);
+              }
+              other => {
+                return Err(QuootEvalError::OperatorError(format!(
+                  "let: names must be symbols, got <{}>",
+                  other.type_string()
                 )))
               }
-            } else {
-              Err(QuootEvalError::OperatorError(format!(
-                "let: first argument must be a list literal, got list"
-              )))
             }
           }
-          None => Err(QuootEvalError::OperatorError(format!(
-            "let: first argument must be a list literal, got ()",
-          ))),
+          maybe_eval(sub_env, args.get(1).unwrap(), eval_args)
+        } else {
+          Err(QuootEvalError::OperatorError(format!(
+            "let: first argument needs an even number of forms"
+          )))
         }
       }
       other => Err(QuootEvalError::OperatorError(format!(
@@ -216,8 +200,8 @@ pub fn quoot_operator(
       .map(|value| match value.clone() {
         QuootValue::Symbol(name) => Ok(name),
         other => Err(QuootEvalError::OperatorError(format!(
-          "operator: first argument must be a list of symbols, found a {} in \
-           list",
+          "operator: first argument must be a list of symbols, found a <{}> in \
+          list",
           other.type_string()
         ))),
       })
@@ -267,7 +251,8 @@ pub fn quoot_fn(
       .map(|value| match value.clone() {
         QuootValue::Symbol(name) => Ok(name),
         other => Err(QuootEvalError::OperatorError(format!(
-          "fn: first argument must be a list of symbols, found a {} in list",
+          "fn: with 2 arguments, first argument must be a list of symbols, \
+          found a <{}> in list",
           other.type_string()
         ))),
       })
@@ -300,8 +285,38 @@ pub fn quoot_fn(
         },
       ))))
     }
+    3 => {
+      let env_clone = env.clone();
+      let fn_name = match args.front().unwrap() {
+        QuootValue::Symbol(name) => name.to_owned(),
+        other => {
+          return Err(QuootEvalError::OperatorError(format!(
+            "fn: with 3 arguments, first argument must be a list of symbols, \
+            got a <{}>",
+            other.type_string()
+          )))
+        }
+      };
+      let arg_names = QuootList::deliteralize(
+        args.get(1).unwrap().as_list("fn")?.as_strict()?,
+      )
+      .iter()
+      .map(|value| match value.clone() {
+        QuootValue::Symbol(name) => Ok(name),
+        other => Err(QuootEvalError::OperatorError(format!(
+          "fn: with 3 arguments, second argument must be a list of symbols, \
+          found a <{}> in list",
+          other.type_string()
+        ))),
+      })
+      .collect::<Vec<Result<String, QuootEvalError>>>()
+      .into_iter()
+      .collect::<Result<Vec<String>, QuootEvalError>>()?;
+      let body = args.get(2).unwrap().to_owned();
+      todo!()
+    }
     _ => Err(QuootEvalError::OperatorError(format!(
-      "fn: need 2 arguments, got {}",
+      "fn: need 2 or 3 arguments, got {}",
       args.len()
     ))),
   }
@@ -1503,6 +1518,44 @@ pub fn quoot_filter(
   }
 }
 
+pub fn quoot_greater(
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
+    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    Ok(QuootValue::Bool(a > b))
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      ">: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_if(
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 3 {
+    let condition =
+      maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool();
+    Ok(maybe_eval(
+      env,
+      args.get(if condition { 1 } else { 2 }).unwrap(),
+      eval_args,
+    )?)
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      "if: need 3 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn default_bindings() -> Bindings {
   let bindings = &mut Bindings::new();
   bindings.insert(
@@ -1559,5 +1612,7 @@ pub fn default_bindings() -> Bindings {
   bindings.insert("rest".to_owned(), QuootValue::Op(&quoot_rest));
   bindings.insert("reverse".to_owned(), QuootValue::Op(&quoot_reverse));
   bindings.insert("filter".to_owned(), QuootValue::Op(&quoot_filter));
+  bindings.insert(">".to_owned(), QuootValue::Op(&quoot_greater));
+  bindings.insert("if".to_owned(), QuootValue::Op(&quoot_if));
   bindings.to_owned()
 }

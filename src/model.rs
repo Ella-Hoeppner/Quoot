@@ -389,6 +389,17 @@ impl Num {
   }
 }
 
+impl PartialOrd for Num {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    match (self, other) {
+      (Num::Int(a), Num::Int(b)) => a.partial_cmp(b),
+      (Num::Float(a), Num::Float(b)) => a.partial_cmp(b),
+      (Num::Int(a), Num::Float(b)) => (*a as f64).partial_cmp(b),
+      (Num::Float(a), Num::Int(b)) => a.partial_cmp(&(*b as f64)),
+    }
+  }
+}
+
 #[derive(Clone)]
 pub struct QuootLazyState {
   pub realized_values: QuootStrictList,
