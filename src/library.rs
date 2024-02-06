@@ -554,14 +554,56 @@ pub fn quoot_take(
         .as_num("take")?
         .floor(),
     ) as usize;
-    let list = maybe_eval(env, args.get(1).unwrap(), eval_args)?
-      .as_list("take")?
-      .as_strict()?;
-    Ok(QuootValue::List(QuootList::Strict(if n >= list.len() {
-      list
-    } else {
-      list.take(n)
-    })))
+    Ok(QuootValue::List(
+      match maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("take")? {
+        QuootList::Strict(strict_list) => {
+          QuootList::Strict(if n >= strict_list.len() {
+            strict_list
+          } else {
+            strict_list.take(n)
+          })
+        }
+        QuootList::Lazy(lazy_list) => QuootList::Lazy(QuootLazyList::new(
+          &|lazy_state| {
+            let builder_values = lazy_state.builder_values.clone().unwrap();
+            if lazy_state.realized_values.len() as i64
+              >= builder_values
+                .get(0)
+                .unwrap()
+                .unwrap()
+                .as_num("take")?
+                .floor()
+            {
+              lazy_state.is_finished = true;
+            } else {
+              let original_list =
+                builder_values.get(1).unwrap().unwrap().as_list("take")?;
+              match original_list.get(lazy_state.realized_values.len() as i64)?
+              {
+                Some(value) => {
+                  lazy_state.realized_values.push_back(value);
+                }
+                None => lazy_state.is_finished = true,
+              };
+            }
+            Ok(())
+          },
+          QuootLazyState::new(
+            {
+              let state = lazy_list.state.read().unwrap();
+              state
+                .realized_values
+                .take(n.min(state.realized_values.len()))
+            },
+            Some(QuootList::Strict(QuootStrictList::from(vec![
+              QuootValue::Num(Num::Int(n as i64)),
+              QuootValue::List(QuootList::Lazy(lazy_list)),
+            ]))),
+            Some(env.clone()),
+          ),
+        )),
+      },
+    ))
   } else {
     Err(QuootEvalError::FunctionError(format!(
       "take: need 2 arguments, got {}",

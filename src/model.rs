@@ -394,7 +394,7 @@ pub type QuootLazyRealizer =
   &'static dyn Fn(&mut QuootLazyState) -> Result<(), QuootEvalError>;
 #[derive(Clone)]
 pub struct QuootLazyList {
-  state: Arc<RwLock<QuootLazyState>>,
+  pub state: Arc<RwLock<QuootLazyState>>,
   realizer: QuootLazyRealizer,
 }
 
