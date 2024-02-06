@@ -618,18 +618,53 @@ pub fn quoot_drop(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 2 {
-    Ok(QuootValue::List(QuootList::Strict(
-      maybe_eval(env, args.get(1).unwrap(), eval_args)?
-        .as_list("drop")?
-        .as_strict()?
-        .skip(
-          0.max(
-            maybe_eval(env, args.front().unwrap(), eval_args)?
-              .as_num("drop")?
-              .floor(),
-          ) as usize,
-        ),
-    )))
+    let n = 0.max(
+      maybe_eval(env, args.front().unwrap(), eval_args)?
+        .as_num("take")?
+        .floor(),
+    ) as usize;
+    Ok(QuootValue::List(
+      match maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("drop")? {
+        QuootList::Strict(strict_list) => {
+          QuootList::Strict(strict_list.skip(0.max(n) as usize))
+        }
+        QuootList::Lazy(lazy_list) => QuootList::Lazy(QuootLazyList::new(
+          &|lazy_state| {
+            let builder_values = lazy_state.builder_values.clone().unwrap();
+            let n = builder_values
+              .get(0)
+              .unwrap()
+              .unwrap()
+              .as_num("take")?
+              .floor();
+            let original_list =
+              builder_values.get(1).unwrap().unwrap().as_list("take")?;
+            match original_list
+              .get(n + lazy_state.realized_values.len() as i64)?
+            {
+              Some(value) => {
+                lazy_state.realized_values.push_back(value);
+              }
+              None => lazy_state.is_finished = true,
+            };
+            Ok(())
+          },
+          QuootLazyState::new(
+            {
+              let state = lazy_list.state.read().unwrap();
+              state
+                .realized_values
+                .skip(n.min(state.realized_values.len()))
+            },
+            Some(QuootList::Strict(QuootStrictList::from(vec![
+              QuootValue::Num(Num::Int(n as i64)),
+              QuootValue::List(QuootList::Lazy(lazy_list)),
+            ]))),
+            Some(env.clone()),
+          ),
+        )),
+      },
+    ))
   } else {
     Err(QuootEvalError::FunctionError(format!(
       "drop: need 2 arguments, got {}",

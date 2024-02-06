@@ -172,7 +172,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 ### high priority
 * implement list functions handling of lazy lists
   * functions to change:
-    * drop, rest, concat, and cons should return lazy lists iff their inputs are lazy
+    * rest, concat, and cons should return lazy lists iff their inputs are lazy
     * last shouldn't clone when calling fully_realize
   * add a `strict` function that fully realizes a lazy list, like clojure's `doall`
 * `eval`
@@ -355,6 +355,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 * optimization:
   * I think there are probably a lot of places where I do like `let x = &mut ...` that could actually just be `let mut x = ...`, which can let me avoid a `.clone()` call later on.
     * Didn't realize before that that was the way `&mut` values worked. Thanks Fay! <3
+  * Can probably use the `QuootStrictList::from(vec![...])` constructor rather than repeated `push_front` or `push_back` calls in several places
   * in quoot_let, I don't think we need to create list_clone, can just call `.get` on the original reference rather than a bunch of `.pop_front`s
   * wherever I'm creating a vector iteratively with `.push_front` or `.push_back`, might be able to just use `Vector::from(vec![])`
 * what about allowing for `.` and `|` to be used as infix operators, within symbol names?
