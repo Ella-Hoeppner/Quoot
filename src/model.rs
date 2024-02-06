@@ -21,7 +21,7 @@ pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
   //AppliedUnapplicableError(String),
-  FunctionError(String),
+  OperatorError(String),
   OutOfBoundsError(i64, i64),
 }
 
@@ -86,6 +86,22 @@ impl QuootList {
         Ok(QuootList::Strict(list_clone.to_owned()))
       }
       QuootList::Lazy(lazy_list) => lazy_list.rest(),
+    }
+  }
+  pub fn deliteralize(mut list: QuootStrictList) -> QuootStrictList {
+    match list.get(0) {
+      Some(value) => match value {
+        QuootValue::Symbol(name) => {
+          if name == "#list" {
+            list.pop_front();
+            list
+          } else {
+            list
+          }
+        }
+        _ => list,
+      },
+      None => list,
     }
   }
 }
@@ -158,7 +174,7 @@ impl QuootValue {
         QuootList::Strict(_) => "List",
         QuootList::Lazy(_) => "LazyList",
       },
-      QuootValue::Op(_) => "Function",
+      QuootValue::Op(_) => "Operator",
     }
     .to_string()
   }
@@ -167,7 +183,7 @@ impl QuootValue {
       QuootValue::Nil => Ok(Num::Int(0)),
       QuootValue::Num(num) => Ok(num.clone()),
       _ => {
-        return Err(QuootEvalError::FunctionError(format!(
+        return Err(QuootEvalError::OperatorError(format!(
           "{}: can't get num from type {}",
           error_prefix,
           self.type_string()
@@ -183,7 +199,7 @@ impl QuootValue {
       QuootValue::Nil => Ok(QuootList::Strict(QuootStrictList::new())),
       QuootValue::List(list) => Ok(list.clone()),
       _ => {
-        return Err(QuootEvalError::FunctionError(format!(
+        return Err(QuootEvalError::OperatorError(format!(
           "{}: can't get list from type {}",
           error_prefix,
           self.type_string()
@@ -191,7 +207,7 @@ impl QuootValue {
       }
     }
   }
-  pub fn as_fn(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
+  pub fn as_op(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
     match self {
       QuootValue::Op(f) => Ok(*f),
       QuootValue::List(list) => {
@@ -208,7 +224,7 @@ impl QuootValue {
                 )),
               }
             } else {
-              Err(QuootEvalError::FunctionError(format!(
+              Err(QuootEvalError::OperatorError(format!(
                 "<List>: need 1 argument, got {}",
                 args.len(),
               )))
@@ -217,7 +233,7 @@ impl QuootValue {
         )))
       }
       _ => {
-        return Err(QuootEvalError::FunctionError(format!(
+        return Err(QuootEvalError::OperatorError(format!(
           "{}: can't use type {} as a function",
           error_prefix,
           self.type_string()
@@ -268,7 +284,7 @@ impl fmt::Display for QuootValue {
       QuootValue::Bool(b) => {
         fmt.write_str(if *b { "true" } else { "false" })?
       }
-      QuootValue::Op(_) => fmt.write_str("<Function>")?,
+      QuootValue::Op(_) => fmt.write_str("<Operator>")?,
     }
     Ok(())
   }
@@ -496,7 +512,7 @@ pub fn eval(
       match values.front() {
         None => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new()))),
         Some(first_value) => {
-          let f = eval(env, first_value)?.as_fn("eval")?;
+          let f = eval(env, first_value)?.as_op("eval")?;
           let cloned_values = &mut values.clone();
           cloned_values.pop_front();
           f(env, cloned_values, true)

@@ -170,11 +170,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* `operator`
-* `fn`
-  * just an operator but it automatically evals it's arguments so it works like a lamba in a normal lisp
-  * once this is done, translate my cljs kd-tree implementation to Quoot
-    * run benchmarks for cljs, clj, and Quoot
+* add another arity to `fn` that gives it an internal name, for recursion
 * `def`
   * only usable as a top-level form
     * for now at least, could later try to let it be used as an alternate syntax for `let` that applies to anything after it in a block, like the HVM syntax
@@ -253,11 +249,12 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * keys
     * vals
   * make skip work with it, should take an arbitrary number of keys to remove as args
-  * QuootValue::Hashmap.as_fn
+  * QuootValue::Hashmap.as_op
   * map? function
-  * as_fn case
+  * as_op case
 * 2-argument case for `eval`, taking a hashmap as an environment
-* add a case to as_fn for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
+* make `operator` have a special extra argument that's bound to the local environment so that it can call `eval` with local bindings from where it's invoked
+* add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
 * QuootValue::Hashset
   * set constructor fn
   * implement get, set, count cases
@@ -267,9 +264,9 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * intersection
     * difference
   * make skip work with it, like with hashmaps
-  * QuootValue::Hashmap.as_fn
+  * QuootValue::Hashmap.as_op
   * map? function
-  * as_fn case
+  * as_op case
 * unquoting
   * just inside quotes, for now
 * figure out how to handle custom delimiter/prefix introduction
