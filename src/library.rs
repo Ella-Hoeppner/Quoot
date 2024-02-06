@@ -468,13 +468,46 @@ pub fn quoot_cons(
       maybe_eval(env, args.front().unwrap(), eval_args)?,
     )))),
     2 => {
-      let first_arg = eval(env, args.front().unwrap())?;
-      let second_arg = eval(env, args.get(1).unwrap())?;
+      let first_arg = maybe_eval(env, args.front().unwrap(), eval_args)?;
+      let second_arg = maybe_eval(env, args.get(1).unwrap(), eval_args)?;
       match second_arg {
-        QuootValue::List(QuootList::Strict(list)) => {
-          let list_clone = &mut list.clone();
+        QuootValue::List(QuootList::Strict(strict_list)) => {
+          let mut list_clone = strict_list.clone();
           list_clone.push_front(first_arg);
-          Ok(QuootValue::List(QuootList::Strict(list_clone.to_owned())))
+          Ok(QuootValue::List(QuootList::Strict(list_clone)))
+        }
+        QuootValue::List(QuootList::Lazy(lazy_list)) => {
+          Ok(QuootValue::List(QuootList::Lazy(QuootLazyList::new(
+            &|lazy_state| {
+              let original_list = lazy_state
+                .builder_values
+                .as_ref()
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .unwrap()
+                .as_list("cons")?;
+              match original_list
+                .get(lazy_state.realized_values.len() as i64 - 1)?
+              {
+                Some(value) => lazy_state.realized_values.push_back(value),
+                None => lazy_state.is_finished = true,
+              }
+              Ok(())
+            },
+            QuootLazyState::new(
+              {
+                let state = lazy_list.state.read().unwrap();
+                let mut prerealized_values = state.realized_values.clone();
+                prerealized_values.push_front(first_arg);
+                prerealized_values
+              },
+              Some(QuootList::Strict(QuootStrictList::unit(QuootValue::List(
+                QuootList::Lazy(lazy_list),
+              )))),
+              Some(env.clone()),
+            ),
+          ))))
         }
         QuootValue::Nil => Ok(QuootValue::List(QuootList::Strict(
           QuootStrictList::unit(first_arg),
@@ -888,7 +921,7 @@ pub fn quoot_compose(
       let fns = args
         .iter()
         .rev()
-        .map(|arg| eval(env, arg)?.as_fn("compose"))
+        .map(|arg| maybe_eval(env, arg, eval_args)?.as_fn("compose"))
         .collect::<Vec<Result<QuootOp, QuootEvalError>>>()
         .into_iter()
         .collect::<Result<Vec<QuootOp>, QuootEvalError>>()?;
@@ -1163,9 +1196,8 @@ pub fn quoot_last(
         Some(value) => value.to_owned(),
       }),
       QuootValue::List(QuootList::Lazy(list)) => Ok({
-        let list_clone = &mut list.clone();
-        list_clone.fully_realize()?;
-        match list_clone.get(list_clone.realized_len() - 1)? {
+        list.fully_realize()?;
+        match list.get(list.realized_len() - 1)? {
           None => QuootValue::Nil,
           Some(value) => value.to_owned(),
         }

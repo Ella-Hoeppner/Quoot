@@ -170,11 +170,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* implement list functions handling of lazy lists
-  * functions to change:
-    * cons should return lazy lists iff its inputs are lazy
-    * last shouldn't clone when calling fully_realize
-  * add a `strict` function that fully realizes a lazy list, like clojure's `doall`
 * `eval`
   * should optionally take an environment
     * guess I need to implement hashmaps first...
@@ -216,9 +211,9 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * lazy iff input is lazy
   * skip
     * takes >=1 args, first must be a list and rest are indeces to skip
-    * 2 args: list and an index, returns a list without the value at that index
-    * 3 args: list, start, end, returns a list skipping the values between start and end
     * lazy iff list is lazy
+  * insert
+    * 3 args: list, index, and value
   * skip-range
     * 3 args, basically the opposite of sublist
     * lazy iff list is lazy
