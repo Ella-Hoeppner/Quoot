@@ -170,13 +170,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* `eval`
-  * should optionally take an environment
-    * guess I need to implement hashmaps first...
-      * or just defer that case until later??
-* quoting
-  * should basically just be an identity vau (i.e. doesn't eval it's arguments)
-    * at least until we need to do unquoting
 * `operator`
 * `fn`
   * just an operator but it automatically evals it's arguments so it works like a lamba in a normal lisp
@@ -263,6 +256,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * QuootValue::Hashmap.as_fn
   * map? function
   * as_fn case
+* 2-argument case for `eval`, taking a hashmap as an environment
 * add a case to as_fn for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
 * QuootValue::Hashset
   * set constructor fn

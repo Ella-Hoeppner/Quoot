@@ -174,6 +174,35 @@ pub fn quoot_let(
   }
 }
 
+pub fn quoot_eval(
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => eval(env, &maybe_eval(env, args.front().unwrap(), eval_args)?),
+    2 => todo!(),
+    _ => Err(QuootEvalError::FunctionError(format!(
+      "inc: need 1 or 2 arguments, got {}",
+      args.len()
+    ))),
+  }
+}
+
+pub fn quoot_quote(
+  _env: &Env,
+  args: &QuootStrictList,
+  _eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(args.front().unwrap().to_owned()),
+    _ => Err(QuootEvalError::FunctionError(format!(
+      "quote: need 1 argument, got {}",
+      args.len()
+    ))),
+  }
+}
+
 pub fn quoot_inc(
   env: &Env,
   args: &QuootStrictList,
@@ -1374,6 +1403,8 @@ pub fn default_bindings() -> Bindings {
     QuootValue::Num(Num::Float(6.283185307179586)),
   );
   bindings.insert("let".to_owned(), QuootValue::Op(&quoot_let));
+  bindings.insert("eval".to_owned(), QuootValue::Op(&quoot_eval));
+  bindings.insert("quote".to_owned(), QuootValue::Op(&quoot_quote));
   bindings.insert("inc".to_owned(), QuootValue::Op(&quoot_inc));
   bindings.insert("dec".to_owned(), QuootValue::Op(&quoot_dec));
   bindings.insert("+".to_owned(), QuootValue::Op(&quoot_add));
