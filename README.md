@@ -170,17 +170,12 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* finish adding `eval_args` argument to standard functions
 * 2-argument signature for range
 * implement list functions handling of lazy lists
   * functions to change:
     * take, drop, rest, concat, and cons should return lazy lists iff their inputs are lazy
     * last shouldn't clone when calling fully_realize
   * add a `strict` function that fully realizes a lazy list, like clojure's `doall`
-* `def`
-  * only usable as a top-level form
-    * for now at least, could later try to let it be used as an alternate syntax for `let` that applies to anything after it in a block, like the HVM syntax
-  * I think this will be one of the only operators that requires special logic?
 * `eval`
   * should optionally take an environment
     * guess I need to implement hashmaps first...
@@ -193,6 +188,10 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * just an operator but it automatically evals it's arguments so it works like a lamba in a normal lisp
   * once this is done, translate my cljs kd-tree implementation to Quoot
     * run benchmarks for cljs, clj, and Quoot
+* `def`
+  * only usable as a top-level form
+    * for now at least, could later try to let it be used as an alternate syntax for `let` that applies to anything after it in a block, like the HVM syntax
+  * I think this will be one of the only operators that requires special logic?
 * think about whether there's a way to make a spread/unroll operator work
   * it's kinda like a macro but that applies to the parent form of where it's called... is there a way to fit this into the evaluation model?
 * more standard library functions:
