@@ -1,6 +1,6 @@
 use crate::model::{
-  eval, maybe_eval, Bindings, Env, Num, QuootEvalError, QuootLazyList,
-  QuootLazyState, QuootList, QuootOp, QuootStrictList, QuootValue,
+  eval, Bindings, Env, Num, QuootEvalError, QuootLazyList, QuootLazyState,
+  QuootList, QuootOp, QuootStrictList, QuootValue,
 };
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
@@ -68,18 +68,16 @@ fn value_max(
   )?)
 }
 
-fn eval_all(
+pub fn maybe_eval(
   env: &Env,
-  values: &QuootStrictList,
-) -> Result<QuootStrictList, QuootEvalError> {
-  Ok(QuootStrictList::from(
-    values
-      .iter()
-      .map(|value| eval(env, value))
-      .collect::<Vec<Result<QuootValue, QuootEvalError>>>()
-      .into_iter()
-      .collect::<Result<Vec<QuootValue>, QuootEvalError>>()?,
-  ))
+  value: &QuootValue,
+  should_eval: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if should_eval {
+    eval(env, value)
+  } else {
+    Ok(value.to_owned())
+  }
 }
 
 fn maybe_eval_all(
@@ -202,16 +200,6 @@ pub fn quoot_quote(
     ))),
   }
 }
-
-/*pub fn partial(f: QuootOp, prefix_args: QuootStrictList) -> QuootOp {
-  Box::leak(Box::new(
-    move |env: &Env, args: &QuootStrictList, eval_args: bool| {
-      let cloned_args = &mut prefix_args.clone();
-      cloned_args.append(args.to_owned());
-      f(env, cloned_args, eval_args)
-    },
-  ))
-}*/
 
 pub fn quoot_operator(
   env: &Env,
@@ -431,7 +419,10 @@ pub fn quoot_divide(
           Num::Float(f) => Num::Float(1.0 / f),
         }
       } else {
-        match (first_num, value_product(eval_all(env, args_clone)?, "/")?) {
+        match (
+          first_num,
+          value_product(maybe_eval_all(env, args_clone, eval_args)?, "/")?,
+        ) {
           (Num::Int(a), Num::Int(b)) => Num::Float((a as f64) / (b as f64)),
           (Num::Float(a), Num::Float(b)) => Num::Float(a / b),
           (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) / b),
@@ -1106,7 +1097,7 @@ pub fn quoot_partial(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("partial")?,
     )),
     _ => {
-      let values = &mut eval_all(env, args)?;
+      let values = &mut maybe_eval_all(env, args, eval_args)?;
       let f = values.pop_front().unwrap().as_op("partial")?;
       Ok(QuootValue::Op(partial(f, values.to_owned())))
     }

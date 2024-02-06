@@ -88,7 +88,8 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 * An evaluation model inspired by [the vau calculus and the Kernel programming language](https://web.cs.wpi.edu/~jshutt/kernel.html), involving `operator`s that blurs the line between macros and functions.
   * In addition to `(fn [...] ...)` which defines a conventional lambda, `(operator [...] ...)` defines an operator that takes in it's arguments unevaluated, allowing for arbitrary processing of the internal AST (this is sometimes called an "fexpr" in older Lisps). `operator`s can always call `eval` on their arguments, and `fn` can be thought of as the special case of `operator` that always calls `eval` on all of it's arguments. Unlike macros, Quoots `operator`s are first-class objects that can be interacted with at runtime.
   * Among other consequences, this means that operators like `or` can seamlessly be used as arguments to higher-order functions, which isn't the case in most other Lisps where they're implemented as macros. If the first argument to `or` evaluates to `true`, then it doesn't matter what the rest of the arguments evaluate to, so their evaluation can be skipped to save performance. But it isn't possible to express this behavior inside a lambda, and so most lisps implement `or` as a macro instead. However, that means that code like `(map or '(true false) '(true true))` doesn't work, as `or` isn't a function and therefore can't be passed to `map`. But in quoot, `operator`s can decide for themselves whether or not to evaluate their arguments, so `or` can avoid unnecessarily evaluating it's arguments while still acting like as a first-class object that has no trouble being composed with higher-order functions. `(map or '(true false) '(true true))` will run fine in Quoot, but not in Scheme, Common Lisp, or Clojure (at least, not without creating a lambda that wraps `or`, which is ugly and inelegant).
-  * This does mean that syntactic abstractions defined with `operator` have an associated run-time cost, rather than being fully expanded at compile-time like traditional macros. However, the semantics of traditional macros are, just like lambdas, a special case of the semantics of operators (specifically, the special case that calls `eval` once on a single subtree created as some combination of the argument subtrees). Therefore, Quoot will also include a `macro` special form that encapsulates this special case and can be expanded in a pre-processing stage for cases where maximal performance is important.
+  * This does mean that syntactic abstractions defined with `operator` have an associated run-time cost, rather than being fully expanded at compile-time like traditional macros. However, the semantics of traditional macros are, just like lambdas, a special case of the semantics of operators. Therefore, Quoot will also include a `macro` special form that encapsulates this special case and can be expanded in a pre-processing stage for cases where maximal performance is important.
+  * While Quoot's evaluation model is inspired by the vau calculus, it differs in important ways. The primary practical difference to the is that Quoot does not have an equivalent Kernel's `wrap` or `unwrap` operatives.
 * Powerful, ergonomic, and concise metaprogramming via a top-level unquote operator.
   * Using an unquote at the top-level (i.e. not inside a quoted form), which would simply cause an error in most Lisps, instead indicates that the unquoted form should be evaluated in a pre-processing step before the rest of the code is evaluated. This can accomplish things similar to traditional macros, but can be much more concise while still being very readable (arguably moreso than traditional macros in many cases). This can often allow you to eliminate local repeated code in a very concise way, which otherwise would require a one-off macro that looks clunky and crowds up the namespace.
   * Consider a clojure expression like:
@@ -171,12 +172,107 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 ## To Do:
 ### high priority
 * add another arity to `fn` that gives it an internal name, for recursion
-* `def`
-  * only usable as a top-level form
-    * for now at least, could later try to let it be used as an alternate syntax for `let` that applies to anything after it in a block, like the HVM syntax
-  * I think this will be one of the only operators that requires special logic?
+* Use &str rather than String for string objects
+  * actually might I run into borrowing/ownership problems if I try to do this?
+    * not really sure, probably worth trying
+* string functions
+  * mainly str and substr
+  * make get return a char for strings
+    * should we have char as it's own type or just treat them as one-character strings?
+      * probably as it's own type
+* QuootValue::Hashmap
+  * hashmap constructor fn
+  * implement get, set, count cases
+  * functions:
+    * map?
+    * merge
+    * zipmap
+    * keys
+    * vals
+  * make skip work with it, should take an arbitrary number of keys to remove as args
+  * QuootValue::Hashmap.as_op
+  * map? function
+  * as_op case
+* add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
+* `local-env` and `with-env` functions
+  * `local-env` takes no args and just returns hashmap of the local environment, while `with-env` accepts a hashmap and a body and makes everything in the hashmap available as bindings in the body
+    * I guess `with-env` is just `let`, except it can accept non-literals...
+      * actually maybe `let` just shouldn't be restricted to literals?
+* fork imbl
+  * impl Hash on Hashmap
+* 2-argument case for `eval`, taking a hashmap as an environment
+* make `operator` have a special extra argument that's bound to the local environment so that it can call `eval` with local bindings from where it's invoked
+  * or wait, could an `operator` that wanted this behavior not just call `local-env`?
+* QuootValue::Hashset
+  * set constructor fn
+  * implement get, set, count cases
+  * functions:
+    * set?
+    * union
+    * intersection
+    * difference
+  * make skip work with it, like with hashmaps
+  * QuootValue::Hashmap.as_op
+  * map? function
+  * as_op case
+* unquoting
+  * just inside quotes, for now
 * think about whether there's a way to make a spread/unroll operator work
   * it's kinda like a macro but that applies to the parent form of where it's called... is there a way to fit this into the evaluation model?
+* figure out how to handle custom delimiter/prefix introduction
+  * plan right now (very subject to change if I come up with something better):
+    * delimiters and prefixes are declared at the top-level, with special syntax along the lines of:
+      * `(#delimiter < > alligators)`
+      * `(#prefix @ dereference)`
+    * these don't affect the parsing of the normal code in rest of the file by default (though there could be an optional extra argument to make them do that)
+      * instead, you can tag certain symbols or prefixes, using a top-level `(#syntax name ...)` form, as being markers of a scope where they should apply
+    * examples:
+      ```
+      (#delimiter < > alligators)
+      (def alligator-dsl
+            (macro [program]
+              ...))
+      (#syntax alligator-dsl alligators)
+      (alligator-dsl '<are scary!>)
+      ```
+        * in the call to `alligator-dsl`, `program` would take on a value of `(alligators are scary!)`
+      ```
+      (#prefix @ quote)
+      (#delimiter < > alligators)
+      (#syntax @ alligators)
+      @<are scary!>
+      ```
+        * here the last expression would parse to `(quote (alligators are scary!))`, and this would evaluate to `(alligators are scary!)`. `@` simply acts as a quote operator within which alligator brackets can be used
+    * maybe could allow delimiters to be directly declared inside `#syntax` for brevity, and potentially have `#syntax` forms just result in their first argument (the name of the symbol being tagged) when processed by the reader so they can be inlined into other forms
+      * in that case the first example above could be rewritten as:
+      
+        ```
+        (def alligator-dsl
+              (macro [program]
+                ...))
+        (#syntax alligator-dsl (#delimiter < > alligators))
+        (alligator-dsl '<are scary!>)
+        ```
+
+        or even as
+
+        ```
+        (def (#syntax alligator-dsl (#delimiter < > alligators))
+              (macro [program]
+                ...))
+        (alligator-dsl '<are scary!>)
+        ```
+* top-level unquoting
+* QuootValue::Foreign
+  * represents foreign rust objects
+    * basically should just be able to call functions on it with syntax like `(foreign-object.method)` or `(.method foreign-object)`
+      * I think we can do without `.-` accessors like clojure has, can just rely on getter/setter methods for everything where that would be needed
+  * ideally should do this in a way that makes it very easy to straightforwardly wrap rust structs with bindings to make them accessible from Quoot
+    * maybe even try to do a #[derive] thingy?
+* anonymous function shorthand syntax
+  * want to use something other than clojure's `#(...)` to denote this, so that it can be used with data structures other than lists. E.g. in closure it would be nice if you could do `#[% 2]` to be the equivalent of `#(vector % 2)`. But this would break for hasmaps because `#{...}` overlaps with the set literal syntax. Would be nice to have another symbol that avoids that ambiguity so it can be composed with all the data structure literals.
+    * Maybe just use `%(...)`? Since they can't be nested anyways this shouldn't cause any problems.
+* atoms, I guess? Kinda don't want to but I guess theres hould be at least some way of having mutable state :(
 * more standard library functions:
   * interleave (lazy iff args are lazy)
   * map (always lazy)
@@ -231,113 +327,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * back, (value list) = ?
   * tbh I don't really love the names cons or conj...
   * maybe pushf, pushb, fpush, and bpush, respectively?
-* Use &str rather than String for string objects
-* string functions
-  * mainly str and substr
-  * make get return a char for strings
-    * should we have char as it's own type or just treat them as one-character strings?
-      * probably as it's own type
-* fork imbl
-  * impl Hash on Hashmap
-* QuootValue::Hashmap
-  * hashmap constructor fn
-  * implement get, set, count cases
-  * functions:
-    * map?
-    * merge
-    * zipmap
-    * keys
-    * vals
-  * make skip work with it, should take an arbitrary number of keys to remove as args
-  * QuootValue::Hashmap.as_op
-  * map? function
-  * as_op case
-* 2-argument case for `eval`, taking a hashmap as an environment
-* make `operator` have a special extra argument that's bound to the local environment so that it can call `eval` with local bindings from where it's invoked
-* add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
-* QuootValue::Hashset
-  * set constructor fn
-  * implement get, set, count cases
-  * functions:
-    * set?
-    * union
-    * intersection
-    * difference
-  * make skip work with it, like with hashmaps
-  * QuootValue::Hashmap.as_op
-  * map? function
-  * as_op case
-* unquoting
-  * just inside quotes, for now
-* figure out how to handle custom delimiter/prefix introduction
-  * If it happens at the parser stage it wouldn't very be ergonomic because it couldn't be included in macros
-    * consider a macro like 
-
-      ```
-      (defmacro alligator-dsl [program]
-        (#delimit < > alligators ...))
-      ```
-    
-      intended to process a dsl that uses `<` and `>` as a custom delimiter type. If the parser handles the expansion of `<...>` forms then the `program` value passed into this macro couldn't actually use those delimiters, only things literally inside the `(#delimit < > alligators ...)` within the macro definition itself would be affected.
-  * Probably need some special syntax to make this work
-    * plan right now (very subject to change if I come up with something better):
-      * delimiters and prefixes are declared at the top-level, with special syntax along the lines of:
-        * `(#delimiter < > alligators)`
-        * `(#prefix @ dereference)`
-      * these don't affect the parsing of the normal code in rest of the file by default (though there could be an optional extra argument to make them do that)
-        * instead, you can tag certain symbols or prefixes, using a top-level `(#syntax name ...)` form, as being markers of a scope where they should apply
-      * examples:
-        ```
-        (#delimiter < > alligators)
-        (def alligator-dsl
-             (macro [program]
-               ...))
-        (#syntax alligator-dsl alligators)
-        (alligator-dsl '<are scary!>)
-        ```
-          * in the call to `alligator-dsl`, `program` would take on a value of `(alligators are scary!)`
-        ```
-        (#prefix @ quote)
-        (#delimiter < > alligators)
-        (#syntax @ alligators)
-        @<are scary!>
-        ```
-          * here the last expression would parse to `(quote (alligators are scary!))`, and this would evaluate to `(alligators are scary!)`. `@` simply acts as a quote operator within which alligator brackets can be used
-      * maybe could allow delimiters to be directly declared inside `#syntax` for brevity, and potentially have `#syntax` forms just result in their first argument (the name of the symbol being tagged) when processed by the reader so they can be inlined into other forms
-        * in that case the first example above could be rewritten as:
-        
-          ```
-          (def alligator-dsl
-               (macro [program]
-                 ...))
-          (#syntax alligator-dsl (#delimiter < > alligators))
-          (alligator-dsl '<are scary!>)
-          ```
-
-          or even as
-
-          ```
-          (def (#syntax alligator-dsl (#delimiter < > alligators))
-               (macro [program]
-                 ...))
-          (alligator-dsl '<are scary!>)
-          ```
-* top-level unquoting
-* QuootValue::Foreign
-  * represents foreign rust objects
-    * basically should just be able to call functions on it with syntax like `(foreign-object.method)` or `(.method foreign-object)`
-      * I think we can do without `.-` accessors like clojure has, can just rely on getter/setter methods for everything where that would be needed
-  * ideally should do this in a way that makes it very easy to straightforwardly wrap rust structs with bindings to make them accessible from Quoot
-    * maybe even try to do a #[derive] thingy?
-* anonymous function shorthand syntax
-  * want to use something other than clojure's `#(...)` to denote this, so that it can be used with data structures other than lists. E.g. in closure it would be nice if you could do `#[% 2]` to be the equivalent of `#(vector % 2)`. But this would break for hasmaps because `#{...}` overlaps with the set literal syntax. Would be nice to have another symbol that avoids that ambiguity so it can be composed with all the data structure literals.
-    * Maybe just use `%(...)`? Since they can't be nested anyways this shouldn't cause any problems.
-* atoms, I guess? Kinda don't want to but I guess theres hould be at least some way of having mutable state :(
-* `local-env` and `with-env` functions
-  * `local-env` takes no args and just returns hashmap of the local environment, while `with-env` accepts a hashmap and a body and makes everything in the hashmap available as bindings in the body
-    * not sure if/when these would be useful but they seem neat and easy to implement
-    * I guess `with-env` is just `let`, except it can accept non-literals...
-      * actually maybe `let` just shouldn't be restricted to literals?
 
 ### low priority
 * think about how to introduce (delimited?) continuations

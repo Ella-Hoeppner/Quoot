@@ -1,12 +1,12 @@
 use crate::library::default_bindings;
-use crate::model::{eval, Env, QuootEvalError, QuootValue};
+use crate::model::{top_level_eval, Env, QuootEvalError, QuootValue};
 use crate::parse::parse;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
 pub fn repl() -> Result<()> {
   println!("\nQuoot repl started :D\n");
-  let global_env = &mut Env::from_bindings(default_bindings());
+  let mut global_env = Env::from_bindings(default_bindings());
 
   let mut rl = DefaultEditor::new()?;
   if rl.load_history("history.txt").is_err() {
@@ -21,12 +21,17 @@ pub fn repl() -> Result<()> {
           Err(parse_error) => {
             println!("{:?}", QuootEvalError::Parse(parse_error))
           }
-          Ok(form) => match eval(global_env, &QuootValue::from_sexp(&form)) {
-            Err(e) => println!("{:?}", e),
-            Ok(value) => {
-              println!("{}", value.to_string())
+          Ok(form) => {
+            match top_level_eval(&global_env, &QuootValue::from_sexp(&form)) {
+              Err(e) => println!("{:?}", e),
+              Ok((value, maybe_bindings)) => {
+                println!("{}", value.to_string());
+                if let Some(bindings) = maybe_bindings {
+                  global_env.bind_all(bindings)
+                };
+              }
             }
-          },
+          }
         }
       }
       Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {

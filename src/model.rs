@@ -23,6 +23,7 @@ pub enum QuootEvalError {
   //AppliedUnapplicableError(String),
   OperatorError(String),
   OutOfBoundsError(i64, i64),
+  DefineError(String),
 }
 
 #[derive(Clone)]
@@ -297,6 +298,9 @@ impl Env {
   pub fn bind(&mut self, name: &str, value: QuootValue) {
     self.bindings.insert(name.to_owned(), value);
   }
+  pub fn bind_all(&mut self, bindings: Bindings) {
+    self.bindings = bindings.union(self.bindings.to_owned());
+  }
   pub fn get(&self, name: &str) -> Result<&QuootValue, QuootEvalError> {
     self
       .bindings
@@ -523,14 +527,35 @@ pub fn eval(
   }
 }
 
-pub fn maybe_eval(
+pub fn top_level_eval(
   env: &Env,
-  value: &QuootValue,
-  should_eval: bool,
-) -> Result<QuootValue, QuootEvalError> {
-  if should_eval {
-    eval(env, value)
-  } else {
-    Ok(value.to_owned())
+  mut value: &QuootValue,
+) -> Result<(QuootValue, Option<Bindings>), QuootEvalError> {
+  let mut binding_name: Option<String> = None;
+  if let QuootValue::List(QuootList::Strict(list)) = &value {
+    if let Some(QuootValue::Symbol(name)) = list.get(0) {
+      if name == "def" {
+        if list.len() == 3 {
+          if let Some(QuootValue::Symbol(def_binding_name)) = list.get(1) {
+            binding_name = Some(def_binding_name.to_string());
+            value = list.get(2).unwrap();
+          }
+        } else {
+          return Err(QuootEvalError::DefineError(format!(
+            "def: need 2 arguments, got {}",
+            list.len() - 1
+          )));
+        }
+      }
+    }
   }
+  let evaled_value = eval(env, value)?;
+  Ok((
+    evaled_value.clone(),
+    binding_name.map(|name| {
+      let mut bindings = Bindings::new();
+      bindings.insert(name, evaled_value);
+      bindings
+    }),
+  ))
 }
