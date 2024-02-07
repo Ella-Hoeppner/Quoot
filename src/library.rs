@@ -296,6 +296,7 @@ pub fn quoot_fn(
       )))))
     }
     3 => {
+      let env_clone = env.clone();
       let fn_name = match args.front().unwrap() {
         QuootValue::Symbol(name) => name.to_owned(),
         other => {
@@ -334,14 +335,13 @@ pub fn quoot_fn(
               application_args.len()
             )));
           }
-          let mut env_clone = application_env.clone();
-          env_clone.bind(&fn_name, QuootValue::Op(op_self.clone()));
           let maybe_evaled_args = maybe_eval_all(
-            &env_clone,
+            application_env,
             application_args,
             application_eval_args,
           )?;
           let mut body_env = env_clone.clone();
+          body_env.bind(&fn_name, QuootValue::Op(op_self.clone()));
           for i in 0..arg_names.len() {
             body_env
               .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());

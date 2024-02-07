@@ -173,7 +173,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 ### high priority
 * try to figure out how to avoid stack-overflows
   * the function `(fn f [x] (if (> x 0) (f (dec x)) x))` causes a stack overflow once the argument reaches about 1600, which isn't very deep, should be able to go much deeper than this
-  * for comparison, javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can be called with a value as high as 9800 before overflowing
+  * for comparison, the same code in clojure (babashka, at least) can get to a depth of about 34800 before crashing, and the javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can get to as deep as 9800
 * port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?
