@@ -105,9 +105,9 @@ pub fn partial(op: QuootOp, prefix_args: QuootStrictList) -> QuootOp {
           env: &Env,
           args: &QuootStrictList,
           eval_args: bool| {
-      let cloned_args = &mut prefix_args.clone();
+      let mut cloned_args = prefix_args.clone();
       cloned_args.append(args.to_owned());
-      (op.f)(&op, env, cloned_args, eval_args)
+      (op.f)(&op, env, &cloned_args, eval_args)
     },
   )))
 }
@@ -124,7 +124,7 @@ pub fn quoot_let(
       QuootValue::List(QuootList::Strict(list)) => {
         let mut list_clone = QuootList::deliteralize(list.clone());
         if list_clone.len() % 2 == 0 {
-          let sub_env = &mut env.clone();
+          let mut sub_env = env.clone();
           while let Some(binding_name) = list_clone.pop_front() {
             match binding_name {
               QuootValue::Symbol(name) => {
@@ -140,7 +140,7 @@ pub fn quoot_let(
               }
             }
           }
-          maybe_eval(sub_env, args.get(1).unwrap(), eval_args)
+          maybe_eval(&sub_env, args.get(1).unwrap(), eval_args)
         } else {
           Err(QuootEvalError::OperatorError(format!(
             "let: first argument needs an even number of forms"
@@ -233,7 +233,7 @@ pub fn quoot_operator(
             body_env
               .bind(arg_names[i].as_str(), application_args[i].to_owned());
           }
-          eval(&body_env, &body.clone())
+          eval(&body_env, &body)
         },
       )))))
     }
@@ -257,8 +257,8 @@ pub fn quoot_fn(
         args.front().unwrap().as_list("fn")?.as_strict()?,
       )
       .iter()
-      .map(|value| match value.clone() {
-        QuootValue::Symbol(name) => Ok(name),
+      .map(|value| match value {
+        QuootValue::Symbol(name) => Ok(name.clone()),
         other => Err(QuootEvalError::OperatorError(format!(
           "fn: with 2 arguments, first argument must be a list of symbols, \
           found a <{}> in list",
@@ -291,14 +291,14 @@ pub fn quoot_fn(
             body_env
               .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());
           }
-          eval(&body_env, &body.clone())
+          eval(&body_env, &body)
         },
       )))))
     }
     3 => {
       let env_clone = env.clone();
       let fn_name = match args.front().unwrap() {
-        QuootValue::Symbol(name) => name.to_owned(),
+        QuootValue::Symbol(name) => name.to_string(),
         other => {
           return Err(QuootEvalError::OperatorError(format!(
             "fn: with 3 arguments, first argument must be a list of symbols, \
@@ -311,8 +311,8 @@ pub fn quoot_fn(
         args.get(1).unwrap().as_list("fn")?.as_strict()?,
       )
       .iter()
-      .map(|value| match value.clone() {
-        QuootValue::Symbol(name) => Ok(name),
+      .map(|value| match value {
+        QuootValue::Symbol(name) => Ok(name.clone()),
         other => Err(QuootEvalError::OperatorError(format!(
           "fn: with 3 arguments, second argument must be a list of symbols, \
           found a <{}> in list",
@@ -346,7 +346,7 @@ pub fn quoot_fn(
             body_env
               .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());
           }
-          eval(&body_env, &body.clone())
+          eval(&body_env, &body)
         },
       )));
       Ok(QuootValue::Op(op))
@@ -430,7 +430,7 @@ pub fn quoot_subtract(
   args: &QuootStrictList,
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
-  let args_clone = &mut args.clone();
+  let mut args_clone = args.clone();
   match args_clone.pop_front() {
     None => Err(QuootEvalError::OperatorError(
       "-: need at least one argument".to_owned(),
@@ -445,7 +445,7 @@ pub fn quoot_subtract(
       } else {
         match (
           first_num,
-          value_sum(maybe_eval_all(env, args_clone, eval_args)?, "-")?,
+          value_sum(maybe_eval_all(env, &args_clone, eval_args)?, "-")?,
         ) {
           (Num::Int(a), Num::Int(b)) => Num::Int(a - b),
           (Num::Float(a), Num::Float(b)) => Num::Float(a - b),
@@ -463,7 +463,7 @@ pub fn quoot_divide(
   args: &QuootStrictList,
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
-  let args_clone = &mut args.clone();
+  let mut args_clone = args.clone();
   match args_clone.pop_front() {
     None => Err(QuootEvalError::OperatorError(
       "/: need at least 1 argument".to_owned(),
@@ -478,7 +478,7 @@ pub fn quoot_divide(
       } else {
         match (
           first_num,
-          value_product(maybe_eval_all(env, args_clone, eval_args)?, "/")?,
+          value_product(maybe_eval_all(env, &args_clone, eval_args)?, "/")?,
         ) {
           (Num::Int(a), Num::Int(b)) => Num::Float((a as f64) / (b as f64)),
           (Num::Float(a), Num::Float(b)) => Num::Float(a / b),
@@ -583,10 +583,10 @@ pub fn quoot_equal(
   Ok(QuootValue::Bool(match args.len() {
     0 => true,
     _ => {
-      let values = &mut maybe_eval_all(env, args, eval_args)?;
-      let first = values.pop_front().unwrap();
-      while let Some(arg) = values.pop_front() {
-        if first != arg {
+      let values = maybe_eval_all(env, args, eval_args)?;
+      let first = &values[0];
+      for i in 1..values.len() {
+        if first != &values[i] {
           return Ok(QuootValue::Bool(false));
         }
       }
@@ -604,10 +604,10 @@ pub fn quoot_numerical_equal(
   Ok(QuootValue::Bool(match args.len() {
     0 => true,
     _ => {
-      let values = &mut maybe_eval_all(env, args, eval_args)?;
-      let first = values.pop_front().unwrap().as_num("==")?;
-      while let Some(arg) = values.pop_front() {
-        if !Num::numerical_equal(first, &arg.as_num("==")?) {
+      let values = maybe_eval_all(env, args, eval_args)?;
+      let first = &values[0].as_num("==");
+      for i in 1..values.len() {
+        if first != &values[i].as_num("==") {
           return Ok(QuootValue::Bool(false));
         }
       }
@@ -638,9 +638,7 @@ pub fn quoot_count(
         Ok(QuootValue::from(list.len()))
       }
       QuootValue::List(QuootList::Lazy(list)) => {
-        let cloned_list = &mut list.clone();
-        let realized_list = cloned_list.fully_realize()?;
-        Ok(QuootValue::from(realized_list.realized_len()))
+        Ok(QuootValue::from(list.fully_realize()?.realized_len()))
       }
       v => Err(QuootEvalError::OperatorError(format!(
         "count: can't count type <{}>",
@@ -788,7 +786,7 @@ pub fn quoot_concat(
                 Ok(())
               },
               QuootLazyState::new(
-                concat_list.clone(),
+                concat_list,
                 Some(QuootList::Strict({
                   let mut state_values = QuootStrictList::from(vec![
                     QuootValue::from(0i64),
@@ -805,7 +803,7 @@ pub fn quoot_concat(
         }
       }
     }
-    Ok(QuootValue::from(concat_list.to_owned()))
+    Ok(QuootValue::from(concat_list))
   }
 }
 
@@ -866,7 +864,7 @@ pub fn quoot_take(
         }
         QuootList::Lazy(lazy_list) => QuootList::Lazy(QuootLazyList::new(
           &|lazy_state| {
-            let builder_values = lazy_state.builder_values.clone().unwrap();
+            let builder_values = lazy_state.builder_values.as_ref().unwrap();
             let n = builder_values
               .get(0)
               .unwrap()
@@ -931,7 +929,7 @@ pub fn quoot_drop(
         }
         QuootList::Lazy(lazy_list) => QuootList::Lazy(QuootLazyList::new(
           &|lazy_state| {
-            let builder_values = lazy_state.builder_values.clone().unwrap();
+            let builder_values = lazy_state.builder_values.as_ref().unwrap();
             let n = builder_values
               .get(0)
               .unwrap()
@@ -1107,7 +1105,7 @@ pub fn quoot_identity(
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   if args.len() == 1 {
-    Ok(maybe_eval(env, &args.front().unwrap().clone(), eval_args)?)
+    Ok(maybe_eval(env, &args.front().unwrap(), eval_args)?)
   } else {
     Err(QuootEvalError::OperatorError(format!(
       "identity: need 1 argument, got {}",
@@ -1176,9 +1174,9 @@ pub fn quoot_partial(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("partial")?,
     )),
     _ => {
-      let values = &mut maybe_eval_all(env, args, eval_args)?;
+      let mut values = maybe_eval_all(env, args, eval_args)?;
       let f = values.pop_front().unwrap().as_op("partial")?;
-      Ok(QuootValue::Op(partial(f, values.to_owned())))
+      Ok(QuootValue::Op(partial(f, values)))
     }
   }
 }
@@ -1387,11 +1385,10 @@ pub fn quoot_first(
         }
       }),
       QuootValue::List(QuootList::Lazy(list)) => Ok({
-        let list_clone = &mut list.clone();
-        list_clone.realize_to(1)?;
-        match list_clone.get(0)? {
+        list.realize_to(1)?;
+        match list.get(0)? {
           None => QuootValue::Nil,
-          Some(value) => value.to_owned(),
+          Some(value) => value,
         }
       }),
       other => {
@@ -1469,14 +1466,14 @@ pub fn quoot_reverse(
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
     1 => {
-      let list = &mut maybe_eval(env, args.front().unwrap(), eval_args)?
+      let mut list = maybe_eval(env, args.front().unwrap(), eval_args)?
         .as_list("reverse")?
         .as_strict()?;
-      let new_list = &mut QuootStrictList::new();
+      let mut new_list = QuootStrictList::new();
       while let Some(value) = list.pop_front() {
         new_list.push_front(value);
       }
-      Ok(QuootValue::from(new_list.clone()))
+      Ok(QuootValue::from(new_list))
     }
     n => Err(QuootEvalError::OperatorError(format!(
       "reverse: need 1 argument, got {}",
@@ -1552,14 +1549,14 @@ pub fn quoot_filter(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("filter")?;
     let list =
       maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("filter")?;
-    let initial_builder_values = &mut QuootStrictList::new();
+    let mut initial_builder_values = QuootStrictList::new();
     initial_builder_values.push_back(QuootValue::from(0i64));
     initial_builder_values.push_back(QuootValue::List(list));
     initial_builder_values.push_back(QuootValue::Op(predicate));
     Ok(QuootValue::from(QuootLazyList::new(
       &|state| {
         let builder_values =
-          state.builder_values.clone().unwrap().as_strict()?;
+          state.builder_values.as_ref().unwrap().as_strict()?;
         let mut index =
           builder_values.front().unwrap().as_num("filter")?.floor();
         let original_list = builder_values.get(1).unwrap().as_list("filter")?;
@@ -1567,7 +1564,7 @@ pub fn quoot_filter(
         while let Some(value) = original_list.get(index)? {
           if (predicate.f)(
             &predicate,
-            &state.captured_environment.clone().unwrap(),
+            &state.captured_environment.as_ref().unwrap(),
             &QuootStrictList::unit(value.clone()),
             false,
           )?
@@ -1588,7 +1585,7 @@ pub fn quoot_filter(
       },
       QuootLazyState::new(
         QuootStrictList::new(),
-        Some(QuootList::Strict(initial_builder_values.to_owned())),
+        Some(QuootList::Strict(initial_builder_values)),
         Some(env.clone()),
       ),
     )))
@@ -1641,7 +1638,7 @@ pub fn quoot_if(
 }
 
 pub fn default_bindings() -> Bindings {
-  let bindings = &mut Bindings::new();
+  let mut bindings = Bindings::new();
   [("TAU", 6.283185307179586)]
     .iter()
     .for_each(|(name, value)| {
@@ -1712,5 +1709,5 @@ pub fn default_bindings() -> Bindings {
   operator_bindings.iter().for_each(|(name, op)| {
     bindings.insert(name.to_string(), QuootValue::Op(QuootOp::new(op)));
   });
-  bindings.to_owned()
+  bindings
 }

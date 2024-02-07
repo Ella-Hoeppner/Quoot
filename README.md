@@ -334,10 +334,11 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ### low priority
 * think about how to introduce (delimited?) continuations
-  * maybe even do the black/pink
 * optimization:
-  * I think there are probably a lot of places where I do like `let x = &mut ...` that could actually just be `let mut x = ...`, which can let me avoid a `.clone()` call later on.
-    * Didn't realize before that that was the way `&mut` values worked. Thanks Fay! <3
+  * `QuootList::as_strict` clones it's argument even when it's a strict list, seems inefficient
+    * maybe it should take ownership of the argument? Or return a reference?
+    * same with `QuootValue::as_num`, `as_list`, `as_op`
+  * I feel like `QuootList::get` and `QuootLazyList::get` could probably just return a reference, as `QuootStrictList` naturally does
   * Can probably use the `QuootStrictList::from(vec![...])` constructor rather than repeated `push_front` or `push_back` calls in several places
   * in quoot_let, I don't think we need to create list_clone, can just call `.get` on the original reference rather than a bunch of `.pop_front`s
   * wherever I'm creating a vector iteratively with `.push_front` or `.push_back`, might be able to just use `Vector::from(vec![])`

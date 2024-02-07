@@ -82,7 +82,7 @@ impl QuootList {
         if list.realized_len() > 0 {
           true
         } else {
-          !list.clone().realize()?
+          !list.realize()?
         }
       }
     })
@@ -98,9 +98,9 @@ impl QuootList {
   pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
     match self {
       QuootList::Strict(strict_list) => {
-        let list_clone = &mut strict_list.clone();
+        let mut list_clone = strict_list.clone();
         list_clone.pop_front();
-        Ok(QuootList::Strict(list_clone.to_owned()))
+        Ok(QuootList::Strict(list_clone))
       }
       QuootList::Lazy(lazy_list) => lazy_list.rest(),
     }
@@ -198,11 +198,11 @@ impl QuootValue {
   pub fn from_sexp(sexp: &Sexp) -> QuootValue {
     match sexp {
       Sexp::List(sub_sexps) => {
-        let v = &mut QuootStrictList::new();
+        let mut v = QuootStrictList::new();
         sub_sexps
           .iter()
           .for_each(|sub_sexp| v.push_back(QuootValue::from_sexp(sub_sexp)));
-        QuootValue::List(QuootList::Strict(v.to_owned()))
+        QuootValue::List(QuootList::Strict(v))
       }
       Sexp::Leaf(token) => QuootValue::from_token(token),
     }
@@ -514,8 +514,7 @@ impl QuootLazyList {
   }
   pub fn fully_realize(&self) -> Result<&QuootLazyList, QuootEvalError> {
     while !self.realize()? {}
-    let state = &mut (*self.state).write().unwrap();
-    state.is_finished = true;
+    (*self.state).write().unwrap().is_finished = true;
     Ok(self)
   }
   pub fn get(
@@ -535,10 +534,10 @@ impl QuootLazyList {
   }
   pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
     let state = (*self.state).read().unwrap();
-    let cloned_values = &mut state.realized_values.clone();
+    let mut cloned_values = state.realized_values.clone();
     cloned_values.pop_front();
     if state.is_finished {
-      Ok(QuootList::Strict(cloned_values.clone()))
+      Ok(QuootList::Strict(cloned_values))
     } else {
       Ok(QuootList::Lazy(QuootLazyList::new(
         &|state| match &state.builder_values {
@@ -552,7 +551,7 @@ impl QuootLazyList {
           None => unreachable!(),
         },
         QuootLazyState::new(
-          cloned_values.clone(),
+          cloned_values,
           Some(QuootList::Lazy(self.clone())),
           None,
         ),
@@ -570,16 +569,16 @@ pub fn eval(
   value: &QuootValue,
 ) -> Result<QuootValue, QuootEvalError> {
   match value {
-    QuootValue::Symbol(name) => env.get(&name).map(|v| v.clone()),
+    QuootValue::Symbol(name) => env.get(&name).map(|v| v.to_owned()),
     QuootValue::List(list) => {
       let values = list.as_strict()?;
       match values.front() {
         None => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new()))),
         Some(first_value) => {
           let op = eval(env, first_value)?.as_op("eval")?;
-          let cloned_values = &mut values.clone();
+          let mut cloned_values = values.clone();
           cloned_values.pop_front();
-          (op.f)(&op, env, cloned_values, true)
+          (op.f)(&op, env, &cloned_values, true)
         }
       }
     }
