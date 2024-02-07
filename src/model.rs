@@ -32,11 +32,28 @@ pub enum QuootList {
 }
 
 pub type QuootStrictList = Vector<QuootValue>;
-pub type QuootOp = &'static dyn Fn(
-  &Env,
-  &QuootStrictList,
-  bool,
-) -> Result<QuootValue, QuootEvalError>;
+
+#[derive(Clone)]
+pub struct QuootOp {
+  pub f: &'static dyn Fn(
+    &QuootOp,
+    &Env,
+    &QuootStrictList,
+    bool,
+  ) -> Result<QuootValue, QuootEvalError>,
+}
+impl QuootOp {
+  pub fn new(
+    f: &'static dyn Fn(
+      &QuootOp,
+      &Env,
+      &QuootStrictList,
+      bool,
+    ) -> Result<QuootValue, QuootEvalError>,
+  ) -> QuootOp {
+    QuootOp { f }
+  }
+}
 
 pub type Bindings = HashMap<String, QuootValue>;
 
@@ -239,11 +256,14 @@ impl QuootValue {
   }
   pub fn as_op(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
     match self {
-      QuootValue::Op(f) => Ok(*f),
+      QuootValue::Op(op) => Ok(op.clone()),
       QuootValue::List(list) => {
         let cloned_list = list.clone();
-        Ok(Box::leak(Box::new(
-          move |_env: &Env, args: &QuootStrictList, _eval_args| {
+        Ok(QuootOp::new(Box::leak(Box::new(
+          move |_op_self: &QuootOp,
+                _env: &Env,
+                args: &QuootStrictList,
+                _eval_args| {
             if args.len() == 1 {
               let index = args.front().unwrap().as_num("<List>")?.floor();
               match cloned_list.get(index)? {
@@ -260,7 +280,7 @@ impl QuootValue {
               )))
             }
           },
-        )))
+        ))))
       }
       _ => {
         return Err(QuootEvalError::OperatorError(format!(
@@ -556,10 +576,10 @@ pub fn eval(
       match values.front() {
         None => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new()))),
         Some(first_value) => {
-          let f = eval(env, first_value)?.as_op("eval")?;
+          let op = eval(env, first_value)?.as_op("eval")?;
           let cloned_values = &mut values.clone();
           cloned_values.pop_front();
-          f(env, cloned_values, true)
+          (op.f)(&op, env, cloned_values, true)
         }
       }
     }

@@ -99,17 +99,21 @@ fn maybe_eval_all(
   }
 }
 
-pub fn partial(f: QuootOp, prefix_args: QuootStrictList) -> QuootOp {
-  Box::leak(Box::new(
-    move |env: &Env, args: &QuootStrictList, eval_args: bool| {
+pub fn partial(op: QuootOp, prefix_args: QuootStrictList) -> QuootOp {
+  QuootOp::new(Box::leak(Box::new(
+    move |_op_self: &QuootOp,
+          env: &Env,
+          args: &QuootStrictList,
+          eval_args: bool| {
       let cloned_args = &mut prefix_args.clone();
       cloned_args.append(args.to_owned());
-      f(env, cloned_args, eval_args)
+      (op.f)(&op, env, cloned_args, eval_args)
     },
-  ))
+  )))
 }
 
 pub fn quoot_let(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -157,6 +161,7 @@ pub fn quoot_let(
 }
 
 pub fn quoot_eval(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -172,6 +177,7 @@ pub fn quoot_eval(
 }
 
 pub fn quoot_quote(
+  _op_self: &QuootOp,
   _env: &Env,
   args: &QuootStrictList,
   _eval_args: bool,
@@ -186,6 +192,7 @@ pub fn quoot_quote(
 }
 
 pub fn quoot_operator(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   _eval_args: bool,
@@ -209,8 +216,9 @@ pub fn quoot_operator(
       .into_iter()
       .collect::<Result<Vec<String>, QuootEvalError>>()?;
       let body = args.get(1).unwrap().to_owned();
-      Ok(QuootValue::Op(Box::leak(Box::new(
-        move |_application_env: &Env,
+      Ok(QuootValue::Op(QuootOp::new(Box::leak(Box::new(
+        move |_op_self: &QuootOp,
+              _application_env: &Env,
               application_args: &QuootStrictList,
               _application_eval_args: bool| {
           if application_args.len() != arg_names.len() {
@@ -227,7 +235,7 @@ pub fn quoot_operator(
           }
           eval(&body_env, &body.clone())
         },
-      ))))
+      )))))
     }
     _ => Err(QuootEvalError::OperatorError(format!(
       "operator: need 2 arguments, got {}",
@@ -237,6 +245,7 @@ pub fn quoot_operator(
 }
 
 pub fn quoot_fn(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   _eval_args: bool,
@@ -260,8 +269,9 @@ pub fn quoot_fn(
       .into_iter()
       .collect::<Result<Vec<String>, QuootEvalError>>()?;
       let body = args.get(1).unwrap().to_owned();
-      Ok(QuootValue::Op(Box::leak(Box::new(
-        move |application_env: &Env,
+      Ok(QuootValue::Op(QuootOp::new(Box::leak(Box::new(
+        move |_op_self: &QuootOp,
+              application_env: &Env,
               application_args: &QuootStrictList,
               application_eval_args: bool| {
           if application_args.len() != arg_names.len() {
@@ -283,10 +293,9 @@ pub fn quoot_fn(
           }
           eval(&body_env, &body.clone())
         },
-      ))))
+      )))))
     }
     3 => {
-      let env_clone = env.clone();
       let fn_name = match args.front().unwrap() {
         QuootValue::Symbol(name) => name.to_owned(),
         other => {
@@ -313,7 +322,34 @@ pub fn quoot_fn(
       .into_iter()
       .collect::<Result<Vec<String>, QuootEvalError>>()?;
       let body = args.get(2).unwrap().to_owned();
-      todo!()
+      let op = QuootOp::new(Box::leak(Box::new(
+        move |op_self: &QuootOp,
+              application_env: &Env,
+              application_args: &QuootStrictList,
+              application_eval_args: bool| {
+          if application_args.len() != arg_names.len() {
+            return Err(QuootEvalError::OperatorError(format!(
+              "<Function>: fn needs {} arguments, got {}",
+              arg_names.len(),
+              application_args.len()
+            )));
+          }
+          let mut env_clone = application_env.clone();
+          env_clone.bind(&fn_name, QuootValue::Op(op_self.clone()));
+          let maybe_evaled_args = maybe_eval_all(
+            &env_clone,
+            application_args,
+            application_eval_args,
+          )?;
+          let mut body_env = env_clone.clone();
+          for i in 0..arg_names.len() {
+            body_env
+              .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());
+          }
+          eval(&body_env, &body.clone())
+        },
+      )));
+      Ok(QuootValue::Op(op))
     }
     _ => Err(QuootEvalError::OperatorError(format!(
       "fn: need 2 or 3 arguments, got {}",
@@ -323,6 +359,7 @@ pub fn quoot_fn(
 }
 
 pub fn quoot_inc(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -343,6 +380,7 @@ pub fn quoot_inc(
 }
 
 pub fn quoot_dec(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -363,6 +401,7 @@ pub fn quoot_dec(
 }
 
 pub fn quoot_add(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -374,6 +413,7 @@ pub fn quoot_add(
 }
 
 pub fn quoot_multiply(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -385,6 +425,7 @@ pub fn quoot_multiply(
 }
 
 pub fn quoot_subtract(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -417,6 +458,7 @@ pub fn quoot_subtract(
 }
 
 pub fn quoot_divide(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -449,6 +491,7 @@ pub fn quoot_divide(
 }
 
 pub fn quoot_min(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -465,6 +508,7 @@ pub fn quoot_min(
 }
 
 pub fn quoot_max(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -481,6 +525,7 @@ pub fn quoot_max(
 }
 
 pub fn quoot_modulo(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -505,6 +550,7 @@ pub fn quoot_modulo(
 }
 
 pub fn quoot_quotient(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -529,6 +575,7 @@ pub fn quoot_quotient(
 }
 
 pub fn quoot_equal(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -549,6 +596,7 @@ pub fn quoot_equal(
 }
 
 pub fn quoot_numerical_equal(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -569,6 +617,7 @@ pub fn quoot_numerical_equal(
 }
 
 pub fn quoot_list_constructor(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -577,6 +626,7 @@ pub fn quoot_list_constructor(
 }
 
 pub fn quoot_count(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -606,6 +656,7 @@ pub fn quoot_count(
 }
 
 pub fn quoot_cons(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -675,6 +726,7 @@ pub fn quoot_cons(
 }
 
 pub fn quoot_concat(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -758,6 +810,7 @@ pub fn quoot_concat(
 }
 
 pub fn quoot_get(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -791,6 +844,7 @@ pub fn quoot_get(
 }
 
 pub fn quoot_take(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -859,6 +913,7 @@ pub fn quoot_take(
 }
 
 pub fn quoot_drop(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -920,6 +975,7 @@ pub fn quoot_drop(
 }
 
 pub fn quoot_strict(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -938,6 +994,7 @@ pub fn quoot_strict(
 }
 
 pub fn quoot_range(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -981,6 +1038,7 @@ pub fn quoot_range(
 }
 
 pub fn quoot_apply(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -990,15 +1048,17 @@ pub fn quoot_apply(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
     1 => {
-      let f =
+      let op =
         maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("apply")?;
       let env_clone = env.clone();
-      Ok(QuootValue::Op(Box::leak(Box::new(
-        move |_inner_env: &Env,
+      Ok(QuootValue::Op(QuootOp::new(Box::leak(Box::new(
+        move |_op_self: &QuootOp,
+              _inner_env: &Env,
               inner_args: &QuootStrictList,
               _inner_eval_args: bool| {
           if inner_args.len() == 1 {
-            f(
+            (op.f)(
+              &op,
               &env_clone,
               &maybe_eval(
                 &env_clone,
@@ -1017,10 +1077,11 @@ pub fn quoot_apply(
             )))
           }
         },
-      ))))
+      )))))
     }
     2 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
-      QuootValue::Op(f) => f(
+      QuootValue::Op(op) => (op.f)(
+        &op,
         env,
         &maybe_eval(env, args.get(1).unwrap(), eval_args)?
           .as_list("apply")?
@@ -1040,6 +1101,7 @@ pub fn quoot_apply(
 }
 
 pub fn quoot_identity(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1055,28 +1117,32 @@ pub fn quoot_identity(
 }
 
 pub fn quoot_compose(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   match args.len() {
-    0 => Ok(QuootValue::Op(&quoot_identity)),
+    0 => Ok(QuootValue::Op(QuootOp::new(&quoot_identity))),
     1 => Ok(QuootValue::Op(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("compose")?,
     )),
     _ => {
-      let fns = args
+      let ops = args
         .iter()
         .rev()
         .map(|arg| maybe_eval(env, arg, eval_args)?.as_op("compose"))
         .collect::<Vec<Result<QuootOp, QuootEvalError>>>()
         .into_iter()
         .collect::<Result<Vec<QuootOp>, QuootEvalError>>()?;
-      Ok(QuootValue::Op(Box::leak(Box::new(
-        move |inner_env: &Env,
+      Ok(QuootValue::Op(QuootOp::new(Box::leak(Box::new(
+        move |_op_self: &QuootOp,
+              inner_env: &Env,
               inner_args: &QuootStrictList,
               inner_eval_args: bool| {
-          let mut value = fns[0](
+          let op = &ops[0];
+          let mut value = (op.f)(
+            op,
             inner_env,
             &maybe_eval_all(
               inner_env,
@@ -1085,17 +1151,19 @@ pub fn quoot_compose(
             )?,
             false,
           )?;
-          for f in &fns[1..] {
-            value = f(inner_env, &QuootStrictList::unit(value), false)?;
+          for op in &ops[1..] {
+            value =
+              (op.f)(&op, inner_env, &QuootStrictList::unit(value), false)?;
           }
           Ok(value)
         },
-      ))))
+      )))))
     }
   }
 }
 
 pub fn quoot_partial(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1116,6 +1184,7 @@ pub fn quoot_partial(
 }
 
 pub fn quoot_is_nil(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1135,6 +1204,7 @@ pub fn quoot_is_nil(
 }
 
 pub fn quoot_is_bool(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1154,6 +1224,7 @@ pub fn quoot_is_bool(
 }
 
 pub fn quoot_is_list(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1173,6 +1244,7 @@ pub fn quoot_is_list(
 }
 
 pub fn quoot_is_num(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1192,6 +1264,7 @@ pub fn quoot_is_num(
 }
 
 pub fn quoot_is_string(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1211,6 +1284,7 @@ pub fn quoot_is_string(
 }
 
 pub fn quoot_is_symbol(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1230,6 +1304,7 @@ pub fn quoot_is_symbol(
 }
 
 pub fn quoot_is_op(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1249,6 +1324,7 @@ pub fn quoot_is_op(
 }
 
 pub fn quoot_is_empty(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1274,6 +1350,7 @@ pub fn quoot_is_empty(
 }
 
 pub fn quoot_is_even(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1295,6 +1372,7 @@ pub fn quoot_is_even(
 }
 
 pub fn quoot_first(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1331,6 +1409,7 @@ pub fn quoot_first(
 }
 
 pub fn quoot_last(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1364,6 +1443,7 @@ pub fn quoot_last(
 }
 
 pub fn quoot_rest(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1382,6 +1462,7 @@ pub fn quoot_rest(
 }
 
 pub fn quoot_reverse(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1405,6 +1486,7 @@ pub fn quoot_reverse(
 }
 
 pub fn quoot_bool(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1421,6 +1503,7 @@ pub fn quoot_bool(
 }
 
 pub fn quoot_int(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1439,6 +1522,7 @@ pub fn quoot_int(
 }
 
 pub fn quoot_abs(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1458,6 +1542,7 @@ pub fn quoot_abs(
 }
 
 pub fn quoot_filter(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1480,7 +1565,8 @@ pub fn quoot_filter(
         let original_list = builder_values.get(1).unwrap().as_list("filter")?;
         let predicate = builder_values.get(2).unwrap().as_op("filter")?;
         while let Some(value) = original_list.get(index)? {
-          if predicate(
+          if (predicate.f)(
+            &predicate,
             &state.captured_environment.clone().unwrap(),
             &QuootStrictList::unit(value.clone()),
             false,
@@ -1515,6 +1601,7 @@ pub fn quoot_filter(
 }
 
 pub fn quoot_greater(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1532,6 +1619,7 @@ pub fn quoot_greater(
 }
 
 pub fn quoot_if(
+  _op_self: &QuootOp,
   env: &Env,
   args: &QuootStrictList,
   eval_args: bool,
@@ -1554,58 +1642,75 @@ pub fn quoot_if(
 
 pub fn default_bindings() -> Bindings {
   let bindings = &mut Bindings::new();
-  bindings.insert("TAU".to_owned(), QuootValue::from(6.283185307179586));
-  bindings.insert("let".to_owned(), QuootValue::Op(&quoot_let));
-  bindings.insert("eval".to_owned(), QuootValue::Op(&quoot_eval));
-  bindings.insert("quote".to_owned(), QuootValue::Op(&quoot_quote));
-  bindings.insert("operator".to_owned(), QuootValue::Op(&quoot_operator));
-  bindings.insert("fn".to_owned(), QuootValue::Op(&quoot_fn));
-  bindings.insert("inc".to_owned(), QuootValue::Op(&quoot_inc));
-  bindings.insert("dec".to_owned(), QuootValue::Op(&quoot_dec));
-  bindings.insert("+".to_owned(), QuootValue::Op(&quoot_add));
-  bindings.insert("*".to_owned(), QuootValue::Op(&quoot_multiply));
-  bindings.insert("=".to_owned(), QuootValue::Op(&quoot_equal));
-  bindings.insert("==".to_owned(), QuootValue::Op(&quoot_numerical_equal));
-  bindings.insert("-".to_owned(), QuootValue::Op(&quoot_subtract));
-  bindings.insert("/".to_owned(), QuootValue::Op(&quoot_divide));
-  bindings.insert("min".to_owned(), QuootValue::Op(&quoot_min));
-  bindings.insert("max".to_owned(), QuootValue::Op(&quoot_max));
-  bindings.insert("mod".to_owned(), QuootValue::Op(&quoot_modulo));
-  bindings.insert("quot".to_owned(), QuootValue::Op(&quoot_quotient));
-  bindings.insert("list".to_owned(), QuootValue::Op(&quoot_list_constructor));
-  bindings.insert("#list".to_owned(), QuootValue::Op(&quoot_list_constructor));
-  bindings.insert("count".to_owned(), QuootValue::Op(&quoot_count));
-  bindings.insert("cons".to_owned(), QuootValue::Op(&quoot_cons));
-  bindings.insert("concat".to_owned(), QuootValue::Op(&quoot_concat));
-  bindings.insert("get".to_owned(), QuootValue::Op(&quoot_get));
-  bindings.insert("take".to_owned(), QuootValue::Op(&quoot_take));
-  bindings.insert("drop".to_owned(), QuootValue::Op(&quoot_drop));
-  bindings.insert("strict".to_owned(), QuootValue::Op(&quoot_strict));
-  bindings.insert("range".to_owned(), QuootValue::Op(&quoot_range));
-  bindings.insert("identity".to_owned(), QuootValue::Op(&quoot_identity));
-  bindings.insert("apply".to_owned(), QuootValue::Op(&quoot_apply));
-  bindings.insert("partial".to_owned(), QuootValue::Op(&quoot_partial));
-  bindings.insert("|".to_owned(), QuootValue::Op(&quoot_partial));
-  bindings.insert("compose".to_owned(), QuootValue::Op(&quoot_compose));
-  bindings.insert(".".to_owned(), QuootValue::Op(&quoot_compose));
-  bindings.insert("nil?".to_owned(), QuootValue::Op(&quoot_is_nil));
-  bindings.insert("bool?".to_owned(), QuootValue::Op(&quoot_is_bool));
-  bindings.insert("list?".to_owned(), QuootValue::Op(&quoot_is_list));
-  bindings.insert("num?".to_owned(), QuootValue::Op(&quoot_is_num));
-  bindings.insert("str?".to_owned(), QuootValue::Op(&quoot_is_string));
-  bindings.insert("symbol?".to_owned(), QuootValue::Op(&quoot_is_symbol));
-  bindings.insert("op?".to_owned(), QuootValue::Op(&quoot_is_op));
-  bindings.insert("empty?".to_owned(), QuootValue::Op(&quoot_is_empty));
-  bindings.insert("even?".to_owned(), QuootValue::Op(&quoot_is_even));
-  bindings.insert("bool".to_owned(), QuootValue::Op(&quoot_bool));
-  bindings.insert("int".to_owned(), QuootValue::Op(&quoot_int));
-  bindings.insert("abs".to_owned(), QuootValue::Op(&quoot_abs));
-  bindings.insert("first".to_owned(), QuootValue::Op(&quoot_first));
-  bindings.insert("last".to_owned(), QuootValue::Op(&quoot_last));
-  bindings.insert("rest".to_owned(), QuootValue::Op(&quoot_rest));
-  bindings.insert("reverse".to_owned(), QuootValue::Op(&quoot_reverse));
-  bindings.insert("filter".to_owned(), QuootValue::Op(&quoot_filter));
-  bindings.insert(">".to_owned(), QuootValue::Op(&quoot_greater));
-  bindings.insert("if".to_owned(), QuootValue::Op(&quoot_if));
+  [("TAU", 6.283185307179586)]
+    .iter()
+    .for_each(|(name, value)| {
+      bindings.insert(name.to_string(), QuootValue::from(*value as f64));
+    });
+  let operator_bindings: &[(
+    &str,
+    fn(
+      &QuootOp,
+      &Env,
+      &QuootStrictList,
+      bool,
+    ) -> Result<QuootValue, QuootEvalError>,
+  )] = &[
+    ("let", quoot_let),
+    ("eval", quoot_eval),
+    ("quote", quoot_quote),
+    ("operator", quoot_operator),
+    ("fn", quoot_fn),
+    ("inc", quoot_inc),
+    ("dec", quoot_dec),
+    ("+", quoot_add),
+    ("*", quoot_multiply),
+    ("=", quoot_equal),
+    ("==", quoot_numerical_equal),
+    ("-", quoot_subtract),
+    ("/", quoot_divide),
+    ("min", quoot_min),
+    ("max", quoot_max),
+    ("mod", quoot_modulo),
+    ("quot", quoot_quotient),
+    ("list", quoot_list_constructor),
+    ("#list", quoot_list_constructor),
+    ("count", quoot_count),
+    ("cons", quoot_cons),
+    ("concat", quoot_concat),
+    ("get", quoot_get),
+    ("take", quoot_take),
+    ("drop", quoot_drop),
+    ("strict", quoot_strict),
+    ("range", quoot_range),
+    ("identity", quoot_identity),
+    ("apply", quoot_apply),
+    ("partial", quoot_partial),
+    ("|", quoot_partial),
+    ("compose", quoot_compose),
+    (".", quoot_compose),
+    ("nil?", quoot_is_nil),
+    ("bool?", quoot_is_bool),
+    ("list?", quoot_is_list),
+    ("num?", quoot_is_num),
+    ("str?", quoot_is_string),
+    ("symbol?", quoot_is_symbol),
+    ("op?", quoot_is_op),
+    ("empty?", quoot_is_empty),
+    ("even?", quoot_is_even),
+    ("bool", quoot_bool),
+    ("int", quoot_int),
+    ("abs", quoot_abs),
+    ("first", quoot_first),
+    ("last", quoot_last),
+    ("rest", quoot_rest),
+    ("reverse", quoot_reverse),
+    ("filter", quoot_filter),
+    (">", quoot_greater),
+    ("if", quoot_if),
+  ];
+  operator_bindings.iter().for_each(|(name, op)| {
+    bindings.insert(name.to_string(), QuootValue::Op(QuootOp::new(op)));
+  });
   bindings.to_owned()
 }

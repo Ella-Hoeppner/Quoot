@@ -171,8 +171,9 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* add another arity to `fn` that gives it an internal name, for recursion
-  * to make this work I think we need to make QuootOp a struct with a closure, such that the closure accepts a reference to the QuootOp. Otherwise there's no way that the closure can reference itself, so recursion is impossible.
+* try to figure out how to avoid stack-overflows
+  * the function `(fn f [x] (if (> x 0) (f (dec x)) x))` causes a stack overflow once the argument reaches about 1600, which isn't very deep, should be able to go much deeper than this
+  * for comparison, javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can be called with a value as high as 9800 before overflowing
 * port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?
