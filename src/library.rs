@@ -1955,6 +1955,48 @@ pub fn quoot_rand(
   Ok(QuootValue::Num(Num::Float(rand::random::<f64>())))
 }
 
+pub fn quoot_repeat(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => {
+      let value = maybe_eval(env, args.front().unwrap(), eval_args)?;
+      Ok(QuootValue::from(QuootLazyList::new(
+        &|lazy_state| {
+          let value =
+            lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
+              .to_owned();
+          lazy_state.realized_values.push_back(value);
+          Ok(())
+        },
+        QuootLazyState::new(
+          QuootStrictList::new(),
+          Some(QuootList::Strict(QuootStrictList::unit(value))),
+          Some(env.to_owned()),
+        ),
+      )))
+    }
+    2 => {
+      let value = maybe_eval(env, &args[0], eval_args)?;
+      let count = maybe_eval(env, &args[1], eval_args)?
+        .as_num("repeat")?
+        .floor();
+      let mut values: Vec<QuootValue> = vec![];
+      for _ in 0..count {
+        values.push(value.to_owned());
+      }
+      Ok(QuootValue::from(QuootStrictList::from(values)))
+    }
+    n => Err(QuootEvalError::OperatorError(format!(
+      "repeatedly: need 1 or 2 arguments, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn quoot_repeatedly(
   _op_self: &QuootOp,
   env: &Env,
@@ -2007,6 +2049,65 @@ pub fn quoot_repeatedly(
     }
     n => Err(QuootEvalError::OperatorError(format!(
       "repeatedly: need 1 or 2 arguments, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_iterate(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    2 => {
+      let op = maybe_eval(env, &args[0], eval_args)?.as_op("iterate")?;
+      let initial_value = maybe_eval(env, &args[1], eval_args)?;
+      Ok(QuootValue::from(QuootLazyList::new(
+        &|lazy_state| {
+          let generator_op =
+            lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
+              .as_op("iterate")?;
+          let value = (generator_op.f)(
+            &generator_op,
+            &lazy_state.captured_environment.as_ref().unwrap(),
+            &QuootStrictList::unit(
+              lazy_state.realized_values.last().unwrap().to_owned(),
+            ),
+            false,
+          )?;
+          lazy_state.realized_values.push_back(value);
+          Ok(())
+        },
+        QuootLazyState::new(
+          QuootStrictList::unit(initial_value),
+          Some(QuootList::Strict(QuootStrictList::unit(QuootValue::Op(op)))),
+          Some(env.to_owned()),
+        ),
+      )))
+    }
+    3 => {
+      let op = maybe_eval(env, &args[0], eval_args)?.as_op("iterate")?;
+      let initial_value = maybe_eval(env, &args[1], eval_args)?;
+      let count = maybe_eval(env, &args[2], eval_args)?
+        .as_num("iterate")?
+        .floor();
+      let mut values = vec![initial_value];
+      for i in 0..count as usize {
+        values.push((op.f)(
+          &op,
+          env,
+          &QuootStrictList::unit(values[i].to_owned()),
+          false,
+        )?);
+      }
+      Ok(QuootValue::List(QuootList::Strict(QuootStrictList::from(
+        values,
+      ))))
+    }
+    n => Err(QuootEvalError::OperatorError(format!(
+      "repeatedly: need 2 or 3 arguments, got {}",
       n
     ))),
   }
@@ -2100,6 +2201,8 @@ pub fn default_bindings() -> Bindings {
     ("if", quoot_if),
     ("rand", quoot_rand),
     ("repeatedly", quoot_repeatedly),
+    ("repeat", quoot_repeat),
+    ("iterate", quoot_iterate),
   ];
   operator_bindings.iter().for_each(|(name, op)| {
     bindings.insert(name.to_string(), QuootValue::Op(QuootOp::new(op)));

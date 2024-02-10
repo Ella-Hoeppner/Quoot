@@ -194,28 +194,16 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * map? function
   * as_op case
 * add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
+* fork imbl
+  * impl Hash on Hashmap
 * `local-env`, `namespace-env`, `update-namespace-env`, and `with-env` operators
   * `local-env` no args, returns hashmap of the local environment
   * `namespace-env` no args, returns the top-level environment of the namespace
   * `update-namespace-env` one argument, a fn that takes the current namespace environment and returns a new one
   * `with-env` accepts a hashmap and a body and makes everything in the hashmap available as bindings in the body
-* fork imbl
-  * impl Hash on Hashmap
 * 2-argument case for `eval`, taking a hashmap as an environment
 * make `operator` have a special extra argument that's bound to the local environment so that it can call `eval` with local bindings from where it's invoked
   * or wait, could an `operator` that wanted this behavior not just call `local-env`?
-* QuootValue::Hashset
-  * set constructor fn
-  * implement get, set, count cases
-  * functions:
-    * set?
-    * union
-    * intersection
-    * difference
-  * make skip work with it, like with hashmaps
-  * QuootValue::Hashmap.as_op
-  * map? function
-  * as_op case
 * unquoting
   * just inside quotes, for now
 * think about whether there's a way to make a spread/unroll operator work
@@ -282,8 +270,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 * more standard library functions:
   * interleave (lazy iff args are lazy)
   * map (always lazy)
-  * repeat (lazy when unbounded)
-  * iterate (always lazy)
   * partition (lazy iff args are lazy)
   * drop-last, take-last
   * get-back
@@ -347,6 +333,18 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * maybe pushf, pushb, fpush, and bpush, respectively?
 
 ### low priority
+* QuootValue::Hashset
+  * set constructor fn
+  * implement get, set, count cases
+  * functions:
+    * set?
+    * union
+    * intersection
+    * difference
+  * make skip work with it, like with hashmaps
+  * QuootValue::Hashmap.as_op
+  * map? function
+  * as_op case
 * try to figure out how to avoid stack-overflows
   * the function `(fn f [x] (if (> x 0) (f (dec x)) x))` causes a stack overflow once the argument reaches about 1600, which isn't very deep, should be able to go much deeper than this
   * for comparison, the same code in clojure (babashka, at least) can get to a depth of about 34800 before crashing, and the javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can get to as deep as 9800
