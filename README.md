@@ -285,8 +285,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * repeat (lazy when unbounded)
   * iterate (always lazy)
   * partition (lazy iff args are lazy)
-  * and, or, not, xor
-    * should do the thing where these return the actual value, not the casted truth value
   * drop-last, take-last
   * get-back
     * like nth but indexes go backwards from the end of the list

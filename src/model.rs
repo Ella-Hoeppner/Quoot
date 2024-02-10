@@ -437,15 +437,10 @@ impl Num {
       }
     }
   }
-  pub fn numerical_equal(a: Num, b: &Num) -> bool {
-    match (a, b) {
-      (Num::Int(a), Num::Int(b)) => a == *b,
-      (Num::Float(a), Num::Float(b)) => a == *b,
-      (Num::Int(a), Num::Float(b)) => (a as f64) == *b,
-      (Num::Float(a), Num::Int(b)) => {
-        println!("{},{},{}", a, (*b as f64), a == (*b as f64));
-        a == (*b as f64)
-      }
+  pub fn as_float(&self) -> f64 {
+    match self {
+      Num::Int(i) => *i as f64,
+      Num::Float(f) => *f,
     }
   }
 }

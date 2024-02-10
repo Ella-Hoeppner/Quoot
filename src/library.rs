@@ -471,20 +471,13 @@ pub fn quoot_divide(
     Some(value) => {
       let first_num = maybe_eval(env, &value, eval_args)?.as_num("/")?;
       Ok(QuootValue::Num(if args_clone.is_empty() {
-        match first_num {
-          Num::Int(i) => Num::Float(1.0 / (i as f64)),
-          Num::Float(f) => Num::Float(1.0 / f),
-        }
+        Num::Float(1.0 / first_num.as_float())
       } else {
-        match (
-          first_num,
-          value_product(maybe_eval_all(env, &args_clone, eval_args)?, "/")?,
-        ) {
-          (Num::Int(a), Num::Int(b)) => Num::Float((a as f64) / (b as f64)),
-          (Num::Float(a), Num::Float(b)) => Num::Float(a / b),
-          (Num::Int(a), Num::Float(b)) => Num::Float((a as f64) / b),
-          (Num::Float(a), Num::Int(b)) => Num::Float(a / (b as f64)),
-        }
+        Num::Float(
+          first_num.as_float()
+            / value_product(maybe_eval_all(env, &args_clone, eval_args)?, "/")?
+              .as_float(),
+        )
       }))
     }
   }
@@ -1608,6 +1601,63 @@ pub fn quoot_bool(
   }
 }
 
+pub fn quoot_not(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      !maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool(),
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "bool: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_and(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => Ok(QuootValue::Bool(true)),
+    n => {
+      for i in 0..n - 1 {
+        let value = maybe_eval(env, &args[i], eval_args)?;
+        if !value.as_bool() {
+          return Ok(value);
+        }
+      }
+      maybe_eval(env, &args[n - 1], eval_args)
+    }
+  }
+}
+
+pub fn quoot_or(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    0 => Ok(QuootValue::Bool(true)),
+    n => {
+      for i in 0..n - 1 {
+        let value = maybe_eval(env, &args[i], eval_args)?;
+        if value.as_bool() {
+          return Ok(value);
+        }
+      }
+      maybe_eval(env, &args[n - 1], eval_args)
+    }
+  }
+}
+
 pub fn quoot_int(
   _op_self: &QuootOp,
   env: &Env,
@@ -1642,6 +1692,26 @@ pub fn quoot_abs(
     )),
     n => Err(QuootEvalError::OperatorError(format!(
       "abs: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_sqrt(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Num(Num::Float(
+      maybe_eval(env, args.front().unwrap(), eval_args)?
+        .as_num("sqrt")?
+        .as_float()
+        .sqrt(),
+    ))),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "sqrt: need 1 argument, got {}",
       n
     ))),
   }
@@ -1878,8 +1948,12 @@ pub fn default_bindings() -> Bindings {
     ("empty?", quoot_is_empty),
     ("even?", quoot_is_even),
     ("bool", quoot_bool),
+    ("not", quoot_not),
+    ("and", quoot_and),
+    ("or", quoot_or),
     ("int", quoot_int),
     ("abs", quoot_abs),
+    ("sqrt", quoot_sqrt),
     ("first", quoot_first),
     ("last", quoot_last),
     ("rest", quoot_rest),
