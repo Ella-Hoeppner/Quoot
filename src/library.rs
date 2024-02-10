@@ -816,6 +816,7 @@ pub fn quoot_get(
         match list.get(index)? {
           Some(value) => Ok(value),
           None => Err(QuootEvalError::OutOfBoundsError(
+            "get".to_owned(),
             index,
             list.as_strict()?.len() as i64,
           )),
@@ -829,6 +830,81 @@ pub fn quoot_get(
   } else {
     Err(QuootEvalError::OperatorError(format!(
       "get: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_update(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 3 {
+    let list = maybe_eval(env, &args[0], eval_args)?.as_list("update")?;
+    let index = maybe_eval(env, &args[1], eval_args)?
+      .as_num("update")?
+      .floor() as usize;
+    let op = maybe_eval(env, &args[2], eval_args)?.as_op("update")?;
+    match list {
+      QuootList::Strict(strict_list) => {
+        if index >= strict_list.len() {
+          return Err(QuootEvalError::OutOfBoundsError(
+            "update".to_owned(),
+            index as i64,
+            strict_list.len() as i64,
+          ));
+        }
+        let updated_value = (op.f)(
+          &op,
+          env,
+          &QuootStrictList::unit(strict_list[index].clone()),
+          false,
+        )?;
+        let mut list_clone = strict_list.clone();
+        list_clone.set(index, updated_value);
+        Ok(QuootValue::from(list_clone))
+      }
+      QuootList::Lazy(lazy_list) => {
+        lazy_list.realize_to(index + 1)?;
+        if index >= lazy_list.realized_len() {
+          return Err(QuootEvalError::OutOfBoundsError(
+            "update".to_owned(),
+            index as i64,
+            lazy_list.realized_len() as i64,
+          ));
+        }
+        let lazy_state = lazy_list.state.read().unwrap();
+        let updated_value = (op.f)(
+          &op,
+          env,
+          &QuootStrictList::unit(lazy_state.realized_values[index].clone()),
+          false,
+        )?;
+        let mut realized_clone = lazy_state.realized_values.clone();
+        realized_clone.set(index, updated_value);
+        Ok(QuootValue::from(QuootLazyList::new(
+          &|lazy_state| {
+            let original_list = lazy_state.builder_values.as_ref().unwrap();
+            let index = lazy_state.realized_values.len() as i64;
+            match original_list.get(index)? {
+              Some(value) => lazy_state.realized_values.push_back(value),
+              None => lazy_state.is_finished = true,
+            }
+            Ok(())
+          },
+          QuootLazyState::new(
+            realized_clone,
+            Some(QuootList::Lazy(lazy_list.to_owned())),
+            lazy_state.captured_environment.to_owned(),
+          ),
+        )))
+      }
+    }
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      "update: need 3 arguments, got {}",
       args.len()
     )))
   }
@@ -1923,6 +1999,7 @@ pub fn default_bindings() -> Bindings {
     ("cons", quoot_cons),
     ("concat", quoot_concat),
     ("get", quoot_get),
+    ("update", quoot_update),
     ("take", quoot_take),
     ("drop", quoot_drop),
     ("strict", quoot_strict),

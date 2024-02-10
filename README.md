@@ -311,8 +311,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * maybe called "with" instead, set sounds side-effectful
     * I guess this should work with lazy lists?
       * this seems silly but also pretty cool maybe?
-  * update
-    * as with set, should work with lazy lists
   * set-in, update-in
   * butlast
     * should work with lazy lists

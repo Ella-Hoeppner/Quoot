@@ -21,7 +21,7 @@ pub enum QuootEvalError {
   Parse(QuootParseError),
   UnboundSymbolError(String),
   OperatorError(String),
-  OutOfBoundsError(i64, i64),
+  OutOfBoundsError(String, i64, i64),
   DefineError(String),
 }
 
@@ -269,6 +269,7 @@ impl QuootValue {
               match cloned_list.get(index)? {
                 Some(value) => Ok(value),
                 None => Err(QuootEvalError::OutOfBoundsError(
+                  "<List application>".to_owned(),
                   index,
                   cloned_list.as_strict()?.len() as i64,
                 )),
