@@ -65,9 +65,6 @@ clj/s code:
 
 quoot code:
 
-need to implement:
-  time
-
 
 (defn magnitude [v] (sqrt (apply + (map (fn [x] (* x x)) v))))
 

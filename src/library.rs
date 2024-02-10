@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::model::{
   eval, Bindings, Env, Num, QuootEvalError, QuootLazyList, QuootLazyState,
   QuootList, QuootOp, QuootStrictList, QuootValue,
@@ -2113,6 +2115,26 @@ pub fn quoot_iterate(
   }
 }
 
+pub fn quoot_time(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => {
+      let timer = Instant::now();
+      let value = maybe_eval(env, &args[0], eval_args)?;
+      println!("{:.2?}", timer.elapsed());
+      Ok(value)
+    }
+    n => Err(QuootEvalError::OperatorError(format!(
+      "time: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn default_bindings() -> Bindings {
   let mut bindings = Bindings::new();
   [
@@ -2134,6 +2156,7 @@ pub fn default_bindings() -> Bindings {
       bool,
     ) -> Result<QuootValue, QuootEvalError>,
   )] = &[
+    ("time", quoot_time),
     ("let", quoot_let),
     ("eval", quoot_eval),
     ("quote", quoot_quote),
