@@ -1261,6 +1261,115 @@ pub fn quoot_is_num(
   }
 }
 
+pub fn quoot_is_nan(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+        QuootValue::Num(Num::Float(f)) => f.is_nan(),
+        _ => false,
+      },
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "nan?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_inf(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+        QuootValue::Num(Num::Float(f)) => f.is_infinite(),
+        _ => false,
+      },
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "inf?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_zero(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+        QuootValue::Num(num) => match num {
+          Num::Int(i) => i == 0,
+          Num::Float(f) => f == 0.,
+        },
+        _ => false,
+      },
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "zero?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_neg(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+        QuootValue::Num(num) => match num {
+          Num::Int(i) => i < 0,
+          Num::Float(f) => f < 0.,
+        },
+        _ => false,
+      },
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "neg?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
+pub fn quoot_is_pos(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => Ok(QuootValue::Bool(
+      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+        QuootValue::Num(num) => match num {
+          Num::Int(i) => i > 0,
+          Num::Float(f) => f > 0.,
+        },
+        _ => false,
+      },
+    )),
+    n => Err(QuootEvalError::OperatorError(format!(
+      "pos?: need 1 argument, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn quoot_is_string(
   _op_self: &QuootOp,
   env: &Env,
@@ -1702,11 +1811,16 @@ pub fn quoot_rand(
 
 pub fn default_bindings() -> Bindings {
   let mut bindings = Bindings::new();
-  [("TAU", 6.283185307179586), ("#inf", f64::INFINITY)]
-    .iter()
-    .for_each(|(name, value)| {
-      bindings.insert(name.to_string(), QuootValue::from(*value as f64));
-    });
+  [
+    ("TAU", 6.283185307179586),
+    ("#inf", f64::INFINITY),
+    ("#-inf", -f64::INFINITY),
+    ("#nan", f64::NAN),
+  ]
+  .iter()
+  .for_each(|(name, value)| {
+    bindings.insert(name.to_string(), QuootValue::from(*value as f64));
+  });
   let operator_bindings: &[(
     &str,
     fn(
@@ -1753,6 +1867,11 @@ pub fn default_bindings() -> Bindings {
     ("bool?", quoot_is_bool),
     ("list?", quoot_is_list),
     ("num?", quoot_is_num),
+    ("nan?", quoot_is_nan),
+    ("inf?", quoot_is_inf),
+    ("zero?", quoot_is_zero),
+    ("neg?", quoot_is_neg),
+    ("pos?", quoot_is_pos),
     ("str?", quoot_is_string),
     ("symbol?", quoot_is_symbol),
     ("op?", quoot_is_op),

@@ -311,11 +311,23 @@ impl fmt::Display for QuootValue {
       }
       QuootValue::Num(num) => match num {
         Num::Int(i) => fmt.write_str(&i.to_string()),
-        Num::Float(f) => fmt.write_str(&format!(
-          "{}{}",
-          f,
-          if f.fract() == 0.0 { "." } else { "" }
-        )),
+        Num::Float(f) => {
+          if f.is_nan() {
+            fmt.write_str("#nan")
+          } else if f.is_finite() {
+            fmt.write_str(&format!(
+              "{}{}",
+              f,
+              if f.fract() == 0.0 { "." } else { "" }
+            ))
+          } else {
+            fmt.write_str(if f.is_sign_positive() {
+              "#inf"
+            } else {
+              "#-inf"
+            })
+          }
+        }
       }?,
       QuootValue::List(list) => match list.as_strict() {
         Ok(values) => {
