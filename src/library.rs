@@ -1615,6 +1615,60 @@ pub fn quoot_greater(
   }
 }
 
+pub fn quoot_greater_or_equal(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
+    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    Ok(QuootValue::Bool(a >= b))
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      ">=: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_less(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
+    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    Ok(QuootValue::Bool(a < b))
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      "<: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
+pub fn quoot_less_or_equal(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() == 2 {
+    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
+    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    Ok(QuootValue::Bool(a <= b))
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      "<=: need 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn quoot_if(
   _op_self: &QuootOp,
   env: &Env,
@@ -1637,9 +1691,18 @@ pub fn quoot_if(
   }
 }
 
+pub fn quoot_rand(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  Ok(QuootValue::Num(Num::Float(rand::random::<f64>())))
+}
+
 pub fn default_bindings() -> Bindings {
   let mut bindings = Bindings::new();
-  [("TAU", 6.283185307179586)]
+  [("TAU", 6.283185307179586), ("#inf", f64::INFINITY)]
     .iter()
     .for_each(|(name, value)| {
       bindings.insert(name.to_string(), QuootValue::from(*value as f64));
@@ -1704,7 +1767,11 @@ pub fn default_bindings() -> Bindings {
     ("reverse", quoot_reverse),
     ("filter", quoot_filter),
     (">", quoot_greater),
+    (">=", quoot_greater_or_equal),
+    ("<", quoot_less),
+    ("<=", quoot_less_or_equal),
     ("if", quoot_if),
+    ("rand", quoot_rand),
   ];
   operator_bindings.iter().for_each(|(name, op)| {
     bindings.insert(name.to_string(), QuootValue::Op(QuootOp::new(op)));

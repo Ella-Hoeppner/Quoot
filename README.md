@@ -171,9 +171,6 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* try to figure out how to avoid stack-overflows
-  * the function `(fn f [x] (if (> x 0) (f (dec x)) x))` causes a stack overflow once the argument reaches about 1600, which isn't very deep, should be able to go much deeper than this
-  * for comparison, the same code in clojure (babashka, at least) can get to a depth of about 34800 before crashing, and the javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can get to as deep as 9800
 * port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?
@@ -197,10 +194,11 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * map? function
   * as_op case
 * add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
-* `local-env` and `with-env` functions
-  * `local-env` takes no args and just returns hashmap of the local environment, while `with-env` accepts a hashmap and a body and makes everything in the hashmap available as bindings in the body
-    * I guess `with-env` is just `let`, except it can accept non-literals...
-      * actually maybe `let` just shouldn't be restricted to literals?
+* `local-env`, `namespace-env`, `update-namespace-env`, and `with-env` operators
+  * `local-env` no args, returns hashmap of the local environment
+  * `namespace-env` no args, returns the top-level environment of the namespace
+  * `update-namespace-env` one argument, a fn that takes the current namespace environment and returns a new one
+  * `with-env` accepts a hashmap and a body and makes everything in the hashmap available as bindings in the body
 * fork imbl
   * impl Hash on Hashmap
 * 2-argument case for `eval`, taking a hashmap as an environment
@@ -277,14 +275,16 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * Maybe just use `%(...)`? Since they can't be nested anyways this shouldn't cause any problems.
 * destructuring
   * no idea how to approach this :O
-* atoms, I guess? Kinda don't want to but I guess theres hould be at least some way of having mutable state :(
+* atoms, I guess? Kinda don't want to but I guess there should be at least some way of having mutable state :(
+* loop/recur
+  * maybe also trampoline? don't have a good idea of what trampolining allows for that couldn't also be handled by loop/recur
+    * I guess it's better for mutual recursion or using existing functions
 * more standard library functions:
   * interleave (lazy iff args are lazy)
   * map (always lazy)
   * repeat (lazy when unbounded)
   * iterate (always lazy)
   * partition (lazy iff args are lazy)
-  * \<, \>=, \<=
   * and, or, not, xor
     * should do the thing where these return the actual value, not the casted truth value
   * drop-last, take-last
@@ -315,6 +315,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
       * this seems silly but also pretty cool maybe?
   * update
     * as with set, should work with lazy lists
+  * set-in, update-in
   * butlast
     * should work with lazy lists
   * sort
@@ -323,6 +324,23 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * takes a fn and a list, returns the item in list for which the fn returns the lowest value
       * if a third argument is supplied and is truthy, this will return a pair of the minimum number and the corresponding value in the list that produced the number
   * max-by
+  * dotimes, doseq
+  * reset! swap!
+    * not sure if I want the exclamation marks...
+      * it's nice to have stateful functions marked with a special character like that, but it would also be nice to leave `!` unused so that it can be a prefix for DSLs...
+  * map-vals
+    * takes a function and a hashmap, updates each value in the hashmap with the function, leaving the keys untouched
+      * basically this:
+        ```
+        (defn map-vals [f m]
+          (into {}
+          (map (fn [[k v]]
+                 [k (f v)])
+               m)))
+        ```
+      * feels like this comes up pretty frequently in clj, enough that there should be this built-in convenience function
+    * maybe also map-keys
+  
 * should have functions for adding values to the front/back, with both possible argument orders
   * cases:
     * front, (list value) = conj
@@ -333,6 +351,12 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * maybe pushf, pushb, fpush, and bpush, respectively?
 
 ### low priority
+* try to figure out how to avoid stack-overflows
+  * the function `(fn f [x] (if (> x 0) (f (dec x)) x))` causes a stack overflow once the argument reaches about 1600, which isn't very deep, should be able to go much deeper than this
+  * for comparison, the same code in clojure (babashka, at least) can get to a depth of about 34800 before crashing, and the javascript function `function f (x) { if (x>0) {return f(x-1)} else {return x} }` can get to as deep as 9800
+  * can just use stacker to extend the stack, but that won't work on wasm...
+    * would be better to just figure out how to take up less stack space
+    * I guess the evaluation model of having the evals interleaved is making this issue worse...
 * think about how to introduce (delimited?) continuations
 * optimization:
   * `QuootList::as_strict` clones it's argument even when it's a strict list, seems inefficient
