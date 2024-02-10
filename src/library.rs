@@ -1955,6 +1955,63 @@ pub fn quoot_rand(
   Ok(QuootValue::Num(Num::Float(rand::random::<f64>())))
 }
 
+pub fn quoot_repeatedly(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  match args.len() {
+    1 => {
+      let generator_op = maybe_eval(env, args.front().unwrap(), eval_args)?
+        .as_op("repeatedly")?;
+      Ok(QuootValue::from(QuootLazyList::new(
+        &|lazy_state| {
+          let generator_op =
+            lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
+              .as_op("repeatedly")?;
+          let value = (generator_op.f)(
+            &generator_op,
+            &lazy_state.captured_environment.as_ref().unwrap(),
+            &QuootStrictList::new(),
+            false,
+          )?;
+          lazy_state.realized_values.push_back(value);
+          Ok(())
+        },
+        QuootLazyState::new(
+          QuootStrictList::new(),
+          Some(QuootList::Strict(QuootStrictList::unit(QuootValue::Op(
+            generator_op,
+          )))),
+          Some(env.to_owned()),
+        ),
+      )))
+    }
+    2 => {
+      let generator_op =
+        maybe_eval(env, &args[0], eval_args)?.as_op("repeatedly")?;
+      let count = maybe_eval(env, &args[1], eval_args)?
+        .as_num("repeatedly")?
+        .floor();
+      let mut values: Vec<QuootValue> = vec![];
+      for _ in 0..count {
+        values.push((generator_op.f)(
+          &generator_op,
+          &env,
+          &QuootStrictList::new(),
+          false,
+        )?)
+      }
+      Ok(QuootValue::from(QuootStrictList::from(values)))
+    }
+    n => Err(QuootEvalError::OperatorError(format!(
+      "repeatedly: need 1 or 2 arguments, got {}",
+      n
+    ))),
+  }
+}
+
 pub fn default_bindings() -> Bindings {
   let mut bindings = Bindings::new();
   [
@@ -2042,6 +2099,7 @@ pub fn default_bindings() -> Bindings {
     ("<=", quoot_less_or_equal),
     ("if", quoot_if),
     ("rand", quoot_rand),
+    ("repeatedly", quoot_repeatedly),
   ];
   operator_bindings.iter().for_each(|(name, op)| {
     bindings.insert(name.to_string(), QuootValue::Op(QuootOp::new(op)));
