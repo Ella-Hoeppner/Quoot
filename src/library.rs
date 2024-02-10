@@ -1854,6 +1854,61 @@ pub fn quoot_filter(
   }
 }
 
+pub fn quoot_map(
+  _op_self: &QuootOp,
+  env: &Env,
+  args: &QuootStrictList,
+  eval_args: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if args.len() > 1 {
+    let mut map_values = vec![maybe_eval(env, &args[0], eval_args)?];
+    for i in 1..args.len() {
+      map_values.push(QuootValue::List(
+        maybe_eval(env, &args[i], eval_args)?.as_list("map")?,
+      ));
+    }
+    Ok(QuootValue::from(QuootLazyList::new(
+      &|state| {
+        let index = state.realized_values.len() as i64;
+        let builder_values =
+          state.builder_values.as_ref().unwrap().as_strict()?;
+        let op = builder_values.get(0).unwrap().as_op("map")?;
+        let mut op_args: Vec<QuootValue> = vec![];
+        for i in 1..builder_values.len() {
+          match builder_values.get(i).unwrap().as_list("map")?.get(index)? {
+            Some(value) => {
+              op_args.push(value);
+            }
+            None => {
+              state.is_finished = true;
+              break;
+            }
+          }
+        }
+        if !state.is_finished {
+          state.realized_values.push_back((op.f)(
+            &op,
+            &state.captured_environment.as_ref().unwrap(),
+            &QuootStrictList::from(op_args),
+            false,
+          )?);
+        }
+        Ok(())
+      },
+      QuootLazyState::new(
+        QuootStrictList::new(),
+        Some(QuootList::Strict(QuootStrictList::from(map_values))),
+        Some(env.clone()),
+      ),
+    )))
+  } else {
+    Err(QuootEvalError::OperatorError(format!(
+      "map: need at least 2 arguments, got {}",
+      args.len()
+    )))
+  }
+}
+
 pub fn quoot_greater(
   _op_self: &QuootOp,
   env: &Env,
@@ -2217,6 +2272,7 @@ pub fn default_bindings() -> Bindings {
     ("rest", quoot_rest),
     ("reverse", quoot_reverse),
     ("filter", quoot_filter),
+    ("map", quoot_map),
     (">", quoot_greater),
     (">=", quoot_greater_or_equal),
     ("<", quoot_less),

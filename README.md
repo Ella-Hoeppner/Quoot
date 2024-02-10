@@ -267,9 +267,10 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 * loop/recur
   * maybe also trampoline? don't have a good idea of what trampolining allows for that couldn't also be handled by loop/recur
     * I guess it's better for mutual recursion or using existing functions
+* maybe a special case of map for when all the arguments are strict
 * more standard library functions:
   * interleave (lazy iff args are lazy)
-  * map (always lazy)
+  * map (lazy iff any arg is lazy)
   * partition (lazy iff args are lazy)
   * drop-last, take-last
   * get-back
