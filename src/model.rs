@@ -261,11 +261,13 @@ impl QuootValue {
         let cloned_list = list.clone();
         Ok(QuootOp::new(Box::leak(Box::new(
           move |_op_self: &QuootOp,
-                _env: &Env,
+                env: &Env,
                 args: &QuootStrictList,
-                _eval_args| {
+                eval_args| {
             if args.len() == 1 {
-              let index = args.front().unwrap().as_num("<List>")?.floor();
+              let index = maybe_eval(env, args.front().unwrap(), eval_args)?
+                .as_num("<List>")?
+                .floor();
               match cloned_list.get(index)? {
                 Some(value) => Ok(value),
                 None => Err(QuootEvalError::OutOfBoundsError(
@@ -625,4 +627,16 @@ pub fn top_level_eval(
       bindings
     }),
   ))
+}
+
+pub fn maybe_eval(
+  env: &Env,
+  value: &QuootValue,
+  should_eval: bool,
+) -> Result<QuootValue, QuootEvalError> {
+  if should_eval {
+    eval(env, value)
+  } else {
+    Ok(value.to_owned())
+  }
 }

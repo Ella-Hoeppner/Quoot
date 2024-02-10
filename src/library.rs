@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::model::{
-  eval, Bindings, Env, Num, QuootEvalError, QuootLazyList, QuootLazyState,
-  QuootList, QuootOp, QuootStrictList, QuootValue,
+  eval, maybe_eval, Bindings, Env, Num, QuootEvalError, QuootLazyList,
+  QuootLazyState, QuootList, QuootOp, QuootStrictList, QuootValue,
 };
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
@@ -68,18 +68,6 @@ fn value_max(
     Num::Float(f64::NEG_INFINITY),
     Num::max,
   )?)
-}
-
-pub fn maybe_eval(
-  env: &Env,
-  value: &QuootValue,
-  should_eval: bool,
-) -> Result<QuootValue, QuootEvalError> {
-  if should_eval {
-    eval(env, value)
-  } else {
-    Ok(value.to_owned())
-  }
 }
 
 fn maybe_eval_all(
@@ -2146,22 +2134,14 @@ pub fn quoot_iterate(
     }
     3 => {
       let op = maybe_eval(env, &args[0], eval_args)?.as_op("iterate")?;
-      let initial_value = maybe_eval(env, &args[1], eval_args)?;
+      let mut value = maybe_eval(env, &args[1], eval_args)?;
       let count = maybe_eval(env, &args[2], eval_args)?
         .as_num("iterate")?
         .floor();
-      let mut values = vec![initial_value];
-      for i in 0..count as usize {
-        values.push((op.f)(
-          &op,
-          env,
-          &QuootStrictList::unit(values[i].to_owned()),
-          false,
-        )?);
+      for _ in 0..count as usize {
+        value = (op.f)(&op, env, &QuootStrictList::unit(value), false)?;
       }
-      Ok(QuootValue::List(QuootList::Strict(QuootStrictList::from(
-        values,
-      ))))
+      Ok(value)
     }
     n => Err(QuootEvalError::OperatorError(format!(
       "repeatedly: need 2 or 3 arguments, got {}",

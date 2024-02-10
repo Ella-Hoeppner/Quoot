@@ -171,6 +171,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
+* multiple bindings in a let block, that can depend on one another
 * port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?

@@ -1,4 +1,4 @@
-clj/s code:
+; clj/s code:
 
 
 (defn magnitude [v] (Math/sqrt (apply + (map #(* % %) v))))
@@ -55,22 +55,17 @@ clj/s code:
   (time (count (mapv #(kd-nearest tree %)
                      (repeatedly 10000
                                  (fn [] [(rand) (rand) (rand)]))))))
-; cljs results: 117ms for construction, 1978ms for search
-; clj results: 47ms for construction, 432ms for search
 
 
 
-
-
-
-quoot code:
+; quoot code:
 
 (def magnitude (fn [v] (sqrt (apply + (map (fn [x] (* x x)) v)))))
 
 (def distance (. magnitude (| map -)))
 
 (def kd-insert
-  (fn [tree x depth]
+  (fn kd-insert [tree x depth]
     (if tree
       (let [dim (mod depth (count x))]
         (update tree
@@ -82,46 +77,51 @@ quoot code:
       [x nil nil])))
 
 (def kd-nearest
-  (fn [tree x depth]
-    (let [node-point (tree 0)
-          d (if (= x node-point)
-              #inf
-               (distance x node-point))
-          left-child (tree 1)
-          right-child (tree 2)
-          node-result [d node-point]
-          choose-result (fn [a b] (if (< (a 0) (b 0)) a b))]
-      (if (and (nil? left-child) (nil? right-child))
-        node-result
-        (if (or (nil? left-child) (nil? right-child))
-          (let [child-result (kd-nearest (or left-child right-child)
-                                         x
-                                         (inc depth))]
-            (if (< (child-result 0) d)
-              child-result
-              node-result))
-          (let [dim (mod depth (count x))
-                primary-child (if (< (x dim) ((tree 0) dim))
-                                left-child
-                                right-child)
-                best-result (choose-result node-result
-                                           (kd-nearest primary-child
+  (fn kd-nearest [tree x depth]
+    (let [node-point (tree 0)]
+      (let [d (if (= x node-point)
+                #inf
+                 (distance x node-point))]
+        (let [left-child (tree 1)]
+          (let [right-child (tree 2)]
+            (let [node-result [d node-point]]
+              (let [choose-result (fn [a b] (if (< (a 0) (b 0)) a b))]
+                (if (and (nil? left-child) (nil? right-child))
+                  node-result
+                  (if (or (nil? left-child) (nil? right-child))
+                    (let [child-result (kd-nearest (or left-child right-child)
+                                                   x
+                                                   (inc depth))]
+                      (if (< (child-result 0) d)
+                        child-result
+                        node-result))
+                    (let [dim (mod depth (count x))]
+                      (let [primary-child (if (< (x dim) ((tree 0) dim))
+                                            left-child
+                                            right-child)]
+                        (let [best-result (choose-result node-result
+                                                         (kd-nearest primary-child
+                                                                     x
+                                                                     (inc depth)))]
+                          (if (< (best-result 0)
+                                 (abs (- (x dim)
+                                         (node-point dim))))
+                            best-result
+                            (choose-result best-result
+                                           (kd-nearest (if (= primary-child left-child)
+                                                         right-child
+                                                         left-child)
                                                        x
-                                                       (inc depth)))]
-            (if (< (best-result 0)
-                   (abs (- (x dim)
-                           (node-point dim))))
-              best-result
-              (choose-result best-result
-                             (kd-nearest (if (= primary-child left-child)
-                                           right-child
-                                           left-child)
-                                         x
-                                         (inc depth))))))))))
+                                                       (inc depth)))))))))))))))))
 
 (let [tree (time (iterate (fn [t] (kd-insert t [(rand) (rand) (rand)] 0))
                           nil
                           10000))]
-  (time (count (mapv (fn [p] (kd-nearest tree p 0))
-                     (repeatedly 10000
-                                 (fn [] [(rand) (rand) (rand)]))))))
+  (time (count (map (fn [p] (kd-nearest tree p 0))
+                    (repeatedly (fn [] [(rand) (rand) (rand)])
+                                10000)))))
+
+; cljs results: 117ms for construction, 1978ms for search
+; clj results: 47ms for construction, 432ms for search
+; quoot results: 6560ms for construction, 1747500ms for search
+; oh no :(
