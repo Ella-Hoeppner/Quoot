@@ -146,44 +146,6 @@ pub fn quoot_quote(
   }
 }
 
-pub fn quoot_op(
-  env: &Env,
-  args: &StrictList,
-  _eval_args: bool,
-) -> Result<Value, EvalError> {
-  match args.len() {
-    2 => {
-      let arg_names = List::deliteralize(
-        args.front().unwrap().as_list("operator")?.as_strict()?,
-      )
-      .iter()
-      .map(|value| match value.clone() {
-        Value::Symbol(name) => Ok(name),
-        other => Err(EvalError::OpError(format!(
-          "operator: first argument must be a list of symbols, found a <{}> in \
-          list",
-          other.type_string()
-        ))),
-      })
-      .collect::<Vec<Result<String, EvalError>>>()
-      .into_iter()
-      .collect::<Result<Vec<String>, EvalError>>()?;
-      let body = args.get(1).unwrap().to_owned();
-      Ok(Value::Op(Op::User(UserOp::new(
-        None,
-        env.clone(),
-        arg_names,
-        StrictList::unit(body),
-        false,
-      ))))
-    }
-    _ => Err(EvalError::OpError(format!(
-      "operator: need 2 arguments, got {}",
-      args.len()
-    ))),
-  }
-}
-
 pub fn parse_args_names(
   names: List,
   error_prefix: &str,
@@ -198,6 +160,43 @@ pub fn parse_args_names(
       ))),
     })
     .collect::<Result<Vec<String>, EvalError>>()
+}
+
+pub fn quoot_op(
+  env: &Env,
+  args: &StrictList,
+  _eval_args: bool,
+) -> Result<Value, EvalError> {
+  if args.len() < 2 {
+    return Err(EvalError::OpError(format!(
+      "op: need at least 2 arguments, got {}",
+      args.len()
+    )));
+  }
+  let mut args_copy = args.clone();
+  let (op_name, arg_names): (Option<String>, Vec<String>) = {
+    let first_arg = args_copy.pop_front().unwrap();
+    match first_arg {
+      Value::Symbol(name) => (
+        Some(name),
+        parse_args_names(args_copy.pop_front().unwrap().as_list("fn")?, "fn")?,
+      ),
+      Value::List(list) => (None, parse_args_names(list, "fn")?),
+      other => {
+        return Err(EvalError::OpError(format!(
+          "op: first argument must be a symbol or list literal, got a <{}>",
+          other.type_string()
+        )))
+      }
+    }
+  };
+  Ok(Value::Op(Op::User(UserOp::new(
+    op_name,
+    env.clone(),
+    arg_names,
+    args_copy,
+    false,
+  ))))
 }
 
 pub fn quoot_fn(
@@ -1785,10 +1784,10 @@ pub fn quoot_repeat(
       )))
     }
     2 => {
-      let count = maybe_eval(env, &args[0], eval_args)?
+      let value = maybe_eval(env, &args[0], eval_args)?;
+      let count = maybe_eval(env, &args[1], eval_args)?
         .as_num("repeat")?
         .floor();
-      let value = maybe_eval(env, &args[1], eval_args)?;
       let mut values: Vec<Value> = vec![];
       for _ in 0..count {
         values.push(value.to_owned());
@@ -1832,11 +1831,11 @@ pub fn quoot_repeatedly(
       )))
     }
     2 => {
-      let count = maybe_eval(env, &args[0], eval_args)?
+      let generator_op =
+        maybe_eval(env, &args[0], eval_args)?.as_op("repeatedly")?;
+      let count = maybe_eval(env, &args[1], eval_args)?
         .as_num("repeatedly")?
         .floor();
-      let generator_op =
-        maybe_eval(env, &args[1], eval_args)?.as_op("repeatedly")?;
       let mut values: Vec<Value> = vec![];
       for _ in 0..count {
         values.push(generator_op.apply(&env, &StrictList::new(), false)?)
