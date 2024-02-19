@@ -1,8 +1,8 @@
-use std::time::Instant;
+use std::{rc::Rc, time::Instant};
 
 use crate::model::{
-  eval, maybe_eval, Bindings, Env, EvalError, LazyList, LazyState, List, Num,
-  Op, StrictList, Value,
+  eval, maybe_eval, maybe_eval_all, Bindings, CoreOp, Env, EvalError, LazyList,
+  LazyState, List, Num, Op, StrictList, UserOp, Value,
 };
 
 fn fold_nums<F: FnMut(Num, &Num) -> Num>(
@@ -70,37 +70,7 @@ fn value_max(
   )?)
 }
 
-fn maybe_eval_all(
-  env: &Env,
-  values: &StrictList,
-  eval_args: bool,
-) -> Result<StrictList, EvalError> {
-  if eval_args {
-    Ok(StrictList::from(
-      values
-        .iter()
-        .map(|value| eval(env, value))
-        .collect::<Vec<Result<Value, EvalError>>>()
-        .into_iter()
-        .collect::<Result<Vec<Value>, EvalError>>()?,
-    ))
-  } else {
-    Ok(values.clone())
-  }
-}
-
-pub fn partial(op: Op, prefix_args: StrictList) -> Op {
-  Op::new(Box::leak(Box::new(
-    move |_op_self: &Op, env: &Env, args: &StrictList, eval_args: bool| {
-      let mut cloned_args = prefix_args.clone();
-      cloned_args.append(args.to_owned());
-      (op.f)(&op, env, &cloned_args, eval_args)
-    },
-  )))
-}
-
 pub fn quoot_let(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -120,7 +90,7 @@ pub fn quoot_let(
                 sub_env.bind(&name, binding_value);
               }
               other => {
-                return Err(EvalError::OperatorError(format!(
+                return Err(EvalError::OpError(format!(
                   "let: names must be symbols, got <{}>",
                   other.type_string()
                 )))
@@ -129,18 +99,18 @@ pub fn quoot_let(
           }
           maybe_eval(&sub_env, args.get(1).unwrap(), eval_args)
         } else {
-          Err(EvalError::OperatorError(format!(
+          Err(EvalError::OpError(format!(
             "let: first argument needs an even number of forms"
           )))
         }
       }
-      other => Err(EvalError::OperatorError(format!(
+      other => Err(EvalError::OpError(format!(
         "let: first argument must be a list literal, got <{}>",
         other.type_string()
       ))),
     }
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "let: need 2 arguments, got {}",
       args.len()
     )))
@@ -148,7 +118,6 @@ pub fn quoot_let(
 }
 
 pub fn quoot_eval(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -156,22 +125,21 @@ pub fn quoot_eval(
   match args.len() {
     1 => eval(env, &maybe_eval(env, args.front().unwrap(), eval_args)?),
     2 => todo!(),
-    _ => Err(EvalError::OperatorError(format!(
-      "inc: need 1 or 2 arguments, got {}",
+    _ => Err(EvalError::OpError(format!(
+      "eval: need 1 or 2 arguments, got {}",
       args.len()
     ))),
   }
 }
 
 pub fn quoot_quote(
-  _op_self: &Op,
   _env: &Env,
   args: &StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(args.front().unwrap().to_owned()),
-    _ => Err(EvalError::OperatorError(format!(
+    _ => Err(EvalError::OpError(format!(
       "quote: need 1 argument, got {}",
       args.len()
     ))),
@@ -179,21 +147,19 @@ pub fn quoot_quote(
 }
 
 pub fn quoot_operator(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     2 => {
-      let env_clone = env.clone();
       let arg_names = List::deliteralize(
         args.front().unwrap().as_list("operator")?.as_strict()?,
       )
       .iter()
       .map(|value| match value.clone() {
         Value::Symbol(name) => Ok(name),
-        other => Err(EvalError::OperatorError(format!(
+        other => Err(EvalError::OpError(format!(
           "operator: first argument must be a list of symbols, found a <{}> in \
           list",
           other.type_string()
@@ -203,28 +169,15 @@ pub fn quoot_operator(
       .into_iter()
       .collect::<Result<Vec<String>, EvalError>>()?;
       let body = args.get(1).unwrap().to_owned();
-      Ok(Value::Op(Op::new(Box::leak(Box::new(
-        move |_op_self: &Op,
-              _application_env: &Env,
-              application_args: &StrictList,
-              _application_eval_args: bool| {
-          if application_args.len() != arg_names.len() {
-            return Err(EvalError::OperatorError(format!(
-              "<Operator>: operator needs {} arguments, got {}",
-              arg_names.len(),
-              application_args.len()
-            )));
-          }
-          let mut body_env = env_clone.clone();
-          for i in 0..arg_names.len() {
-            body_env
-              .bind(arg_names[i].as_str(), application_args[i].to_owned());
-          }
-          eval(&body_env, &body)
-        },
-      )))))
+      Ok(Value::Op(Op::User(UserOp::new(
+        None,
+        env.clone(),
+        arg_names,
+        StrictList::unit(body),
+        false,
+      ))))
     }
-    _ => Err(EvalError::OperatorError(format!(
+    _ => Err(EvalError::OpError(format!(
       "operator: need 2 arguments, got {}",
       args.len()
     ))),
@@ -232,20 +185,18 @@ pub fn quoot_operator(
 }
 
 pub fn quoot_fn(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     2 => {
-      let env_clone = env.clone();
       let arg_names =
         List::deliteralize(args.front().unwrap().as_list("fn")?.as_strict()?)
           .iter()
           .map(|value| match value {
             Value::Symbol(name) => Ok(name.clone()),
-            other => Err(EvalError::OperatorError(format!(
+            other => Err(EvalError::OpError(format!(
           "fn: with 2 arguments, first argument must be a list of symbols, \
           found a <{}> in list",
           other.type_string()
@@ -255,38 +206,19 @@ pub fn quoot_fn(
           .into_iter()
           .collect::<Result<Vec<String>, EvalError>>()?;
       let body = args.get(1).unwrap().to_owned();
-      Ok(Value::Op(Op::new(Box::leak(Box::new(
-        move |_op_self: &Op,
-              application_env: &Env,
-              application_args: &StrictList,
-              application_eval_args: bool| {
-          if application_args.len() != arg_names.len() {
-            return Err(EvalError::OperatorError(format!(
-              "<Function>: fn needs {} arguments, got {}",
-              arg_names.len(),
-              application_args.len()
-            )));
-          }
-          let maybe_evaled_args = maybe_eval_all(
-            application_env,
-            application_args,
-            application_eval_args,
-          )?;
-          let mut body_env = env_clone.clone();
-          for i in 0..arg_names.len() {
-            body_env
-              .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());
-          }
-          eval(&body_env, &body)
-        },
-      )))))
+      Ok(Value::Op(Op::User(UserOp::new(
+        None,
+        env.clone(),
+        arg_names,
+        StrictList::unit(body),
+        true,
+      ))))
     }
     3 => {
-      let env_clone = env.clone();
       let fn_name = match args.front().unwrap() {
         Value::Symbol(name) => name.to_string(),
         other => {
-          return Err(EvalError::OperatorError(format!(
+          return Err(EvalError::OpError(format!(
             "fn: with 3 arguments, first argument must be a list of symbols, \
             got a <{}>",
             other.type_string()
@@ -298,7 +230,7 @@ pub fn quoot_fn(
           .iter()
           .map(|value| match value {
             Value::Symbol(name) => Ok(name.clone()),
-            other => Err(EvalError::OperatorError(format!(
+            other => Err(EvalError::OpError(format!(
           "fn: with 3 arguments, second argument must be a list of symbols, \
           found a <{}> in list",
           other.type_string()
@@ -308,35 +240,15 @@ pub fn quoot_fn(
           .into_iter()
           .collect::<Result<Vec<String>, EvalError>>()?;
       let body = args.get(2).unwrap().to_owned();
-      let op = Op::new(Box::leak(Box::new(
-        move |op_self: &Op,
-              application_env: &Env,
-              application_args: &StrictList,
-              application_eval_args: bool| {
-          if application_args.len() != arg_names.len() {
-            return Err(EvalError::OperatorError(format!(
-              "<Function>: fn needs {} arguments, got {}",
-              arg_names.len(),
-              application_args.len()
-            )));
-          }
-          let maybe_evaled_args = maybe_eval_all(
-            application_env,
-            application_args,
-            application_eval_args,
-          )?;
-          let mut body_env = env_clone.clone();
-          body_env.bind(&fn_name, Value::Op(op_self.clone()));
-          for i in 0..arg_names.len() {
-            body_env
-              .bind(arg_names[i].as_str(), maybe_evaled_args[i].to_owned());
-          }
-          eval(&body_env, &body)
-        },
-      )));
-      Ok(Value::Op(op))
+      Ok(Value::Op(Op::User(UserOp::new(
+        Some(fn_name),
+        env.clone(),
+        arg_names,
+        StrictList::unit(body),
+        true,
+      ))))
     }
-    _ => Err(EvalError::OperatorError(format!(
+    _ => Err(EvalError::OpError(format!(
       "fn: need 2 or 3 arguments, got {}",
       args.len()
     ))),
@@ -344,7 +256,6 @@ pub fn quoot_fn(
 }
 
 pub fn quoot_inc(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -357,7 +268,7 @@ pub fn quoot_inc(
       },
     ))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "inc: need 1 argument, got {}",
       args.len()
     )))
@@ -365,7 +276,6 @@ pub fn quoot_inc(
 }
 
 pub fn quoot_dec(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -378,7 +288,7 @@ pub fn quoot_dec(
       },
     ))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "inc: need 1 argument, got {}",
       args.len()
     )))
@@ -386,7 +296,6 @@ pub fn quoot_dec(
 }
 
 pub fn quoot_add(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -398,7 +307,6 @@ pub fn quoot_add(
 }
 
 pub fn quoot_multiply(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -410,14 +318,13 @@ pub fn quoot_multiply(
 }
 
 pub fn quoot_subtract(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   let mut args_clone = args.clone();
   match args_clone.pop_front() {
-    None => Err(EvalError::OperatorError(
+    None => Err(EvalError::OpError(
       "-: need at least one argument".to_owned(),
     )),
     Some(value) => {
@@ -443,16 +350,13 @@ pub fn quoot_subtract(
 }
 
 pub fn quoot_divide(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   let mut args_clone = args.clone();
   match args_clone.pop_front() {
-    None => Err(EvalError::OperatorError(
-      "/: need at least 1 argument".to_owned(),
-    )),
+    None => Err(EvalError::OpError("/: need at least 1 argument".to_owned())),
     Some(value) => {
       let first_num = maybe_eval(env, &value, eval_args)?.as_num("/")?;
       Ok(Value::Num(if args_clone.is_empty() {
@@ -469,13 +373,12 @@ pub fn quoot_divide(
 }
 
 pub fn quoot_min(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    0 => Err(EvalError::OperatorError(
+    0 => Err(EvalError::OpError(
       "min: need at least 1 argument".to_owned(),
     )),
     _ => Ok(Value::Num(value_min(
@@ -486,13 +389,12 @@ pub fn quoot_min(
 }
 
 pub fn quoot_max(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    0 => Err(EvalError::OperatorError(
+    0 => Err(EvalError::OpError(
       "max: need at least 1 argument".to_owned(),
     )),
     _ => Ok(Value::Num(value_max(
@@ -503,7 +405,6 @@ pub fn quoot_max(
 }
 
 pub fn quoot_modulo(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -520,7 +421,7 @@ pub fn quoot_modulo(
       (Num::Float(a), Num::Int(b)) => Num::Float(a % (b as f64)),
     }))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "mod: need 2 arguments, got {}",
       args.len()
     )))
@@ -528,7 +429,6 @@ pub fn quoot_modulo(
 }
 
 pub fn quoot_quotient(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -545,7 +445,7 @@ pub fn quoot_quotient(
       (Num::Float(a), Num::Int(b)) => Num::Int((a / (b as f64)) as i64),
     }))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "quot: need 2 arguments, got {}",
       args.len()
     )))
@@ -553,7 +453,6 @@ pub fn quoot_quotient(
 }
 
 pub fn quoot_equal(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -574,7 +473,6 @@ pub fn quoot_equal(
 }
 
 pub fn quoot_numerical_equal(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -595,7 +493,6 @@ pub fn quoot_numerical_equal(
 }
 
 pub fn quoot_list_constructor(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -604,7 +501,6 @@ pub fn quoot_list_constructor(
 }
 
 pub fn quoot_count(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -616,13 +512,13 @@ pub fn quoot_count(
       Value::List(List::Lazy(list)) => {
         Ok(Value::from(list.fully_realize()?.realized_len()))
       }
-      v => Err(EvalError::OperatorError(format!(
+      v => Err(EvalError::OpError(format!(
         "count: can't count type <{}>",
         v.type_string()
       ))),
     }
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "count: need 1 argument, got {}",
       args.len()
     )))
@@ -630,7 +526,6 @@ pub fn quoot_count(
 }
 
 pub fn quoot_cons(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -682,13 +577,13 @@ pub fn quoot_cons(
           ),
         ))),
         Value::Nil => Ok(Value::from(StrictList::unit(first_arg))),
-        _ => Err(EvalError::OperatorError(format!(
+        _ => Err(EvalError::OpError(format!(
           "cons: cannot cons onto a <{}>",
           second_arg.type_string()
         ))),
       }
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "cons: need 1 or 2 arguments, got {}",
       n
     ))),
@@ -696,7 +591,6 @@ pub fn quoot_cons(
 }
 
 pub fn quoot_concat(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -779,7 +673,6 @@ pub fn quoot_concat(
 }
 
 pub fn quoot_get(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -800,13 +693,13 @@ pub fn quoot_get(
           )),
         }
       }
-      other => Err(EvalError::OperatorError(format!(
+      other => Err(EvalError::OpError(format!(
         "get: cannot get value from <{}>",
         other.type_string()
       ))),
     }
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "get: need 2 arguments, got {}",
       args.len()
     )))
@@ -814,7 +707,6 @@ pub fn quoot_get(
 }
 
 pub fn quoot_update(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -834,12 +726,8 @@ pub fn quoot_update(
             strict_list.len() as i64,
           ));
         }
-        let updated_value = (op.f)(
-          &op,
-          env,
-          &StrictList::unit(strict_list[index].clone()),
-          false,
-        )?;
+        let updated_value =
+          op.apply(env, &StrictList::unit(strict_list[index].clone()), false)?;
         let mut list_clone = strict_list.clone();
         list_clone.set(index, updated_value);
         Ok(Value::from(list_clone))
@@ -854,8 +742,7 @@ pub fn quoot_update(
           ));
         }
         let lazy_state = lazy_list.state.read().unwrap();
-        let updated_value = (op.f)(
-          &op,
+        let updated_value = op.apply(
           env,
           &StrictList::unit(lazy_state.realized_values[index].clone()),
           false,
@@ -881,7 +768,7 @@ pub fn quoot_update(
       }
     }
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "update: need 3 arguments, got {}",
       args.len()
     )))
@@ -889,7 +776,6 @@ pub fn quoot_update(
 }
 
 pub fn quoot_take(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -948,7 +834,7 @@ pub fn quoot_take(
       },
     ))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "take: need 2 arguments, got {}",
       args.len()
     )))
@@ -956,7 +842,6 @@ pub fn quoot_take(
 }
 
 pub fn quoot_drop(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1010,7 +895,7 @@ pub fn quoot_drop(
       },
     ))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "drop: need 2 arguments, got {}",
       args.len()
     )))
@@ -1018,7 +903,6 @@ pub fn quoot_drop(
 }
 
 pub fn quoot_strict(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1029,7 +913,7 @@ pub fn quoot_strict(
         .as_list("strict")?
         .as_strict()?,
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "strict: need 1 argument, got {}",
       n
     ))),
@@ -1037,7 +921,6 @@ pub fn quoot_strict(
 }
 
 pub fn quoot_range(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1071,7 +954,7 @@ pub fn quoot_range(
         (start..end).map(Value::from).collect::<StrictList>(),
       ))
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "range: need 0, 1, or 2 arguments, got {}",
       n
     ))),
@@ -1079,62 +962,31 @@ pub fn quoot_range(
 }
 
 pub fn quoot_apply(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    0 => Err(EvalError::OperatorError(
+    0 => Err(EvalError::OpError(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
-    1 => {
-      let op =
-        maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("apply")?;
-      let env_clone = env.clone();
-      Ok(Value::Op(Op::new(Box::leak(Box::new(
-        move |_op_self: &Op,
-              _inner_env: &Env,
-              inner_args: &StrictList,
-              _inner_eval_args: bool| {
-          if inner_args.len() == 1 {
-            (op.f)(
-              &op,
-              &env_clone,
-              &maybe_eval(
-                &env_clone,
-                inner_args.front().unwrap(),
-                _inner_eval_args,
-              )?
-              .as_list("apply")?
-              .as_strict()?,
-              _inner_eval_args,
-            )
-          } else {
-            Err(EvalError::OperatorError(format!(
-              "apply: function constructed with 1-argument apply call \
-              needs 1 argument, got {}",
-              inner_args.len(),
-            )))
-          }
-        },
-      )))))
-    }
+    1 => Ok(Value::Op(Op::Applied(Rc::from(
+      maybe_eval(env, &args[0], eval_args)?.as_op("apply")?,
+    )))),
     2 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
-      Value::Op(op) => (op.f)(
-        &op,
+      Value::Op(op) => op.apply(
         env,
         &maybe_eval(env, args.get(1).unwrap(), eval_args)?
           .as_list("apply")?
           .as_strict()?,
         eval_args,
       ),
-      other => Err(EvalError::OperatorError(format!(
+      other => Err(EvalError::OpError(format!(
         "apply: cannot invoke type <{}>",
         other.type_string()
       ))),
     },
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "apply: need 1 or 2 arguments, got {}",
       n
     ))),
@@ -1142,7 +994,6 @@ pub fn quoot_apply(
 }
 
 pub fn quoot_identity(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1150,7 +1001,7 @@ pub fn quoot_identity(
   if args.len() == 1 {
     Ok(maybe_eval(env, &args.front().unwrap(), eval_args)?)
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "identity: need 1 argument, got {}",
       args.len()
     )))
@@ -1158,13 +1009,14 @@ pub fn quoot_identity(
 }
 
 pub fn quoot_compose(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    0 => Ok(Value::Op(Op::new(&quoot_identity))),
+    0 => Err(EvalError::OpError(format!(
+      "compose: need at least 1 argument, got 0"
+    ))),
     1 => Ok(Value::Op(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("compose")?,
     )),
@@ -1176,40 +1028,18 @@ pub fn quoot_compose(
         .collect::<Vec<Result<Op, EvalError>>>()
         .into_iter()
         .collect::<Result<Vec<Op>, EvalError>>()?;
-      Ok(Value::Op(Op::new(Box::leak(Box::new(
-        move |_op_self: &Op,
-              inner_env: &Env,
-              inner_args: &StrictList,
-              inner_eval_args: bool| {
-          let op = &ops[0];
-          let mut value = (op.f)(
-            op,
-            inner_env,
-            &maybe_eval_all(
-              inner_env,
-              inner_args,
-              eval_args && inner_eval_args,
-            )?,
-            false,
-          )?;
-          for op in &ops[1..] {
-            value = (op.f)(&op, inner_env, &StrictList::unit(value), false)?;
-          }
-          Ok(value)
-        },
-      )))))
+      Ok(Value::Op(Op::Composition(ops)))
     }
   }
 }
 
 pub fn quoot_partial(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    0 => Err(EvalError::OperatorError(
+    0 => Err(EvalError::OpError(
       "partial: need at least 1 argument, got 0".to_owned(),
     )),
     1 => Ok(Value::Op(
@@ -1218,13 +1048,12 @@ pub fn quoot_partial(
     _ => {
       let mut values = maybe_eval_all(env, args, eval_args)?;
       let f = values.pop_front().unwrap().as_op("partial")?;
-      Ok(Value::Op(partial(f, values)))
+      Ok(Value::Op(Op::Partial(Rc::from(f), values)))
     }
   }
 }
 
 pub fn quoot_is_nil(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1236,7 +1065,7 @@ pub fn quoot_is_nil(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "nil?: need 1 argument, got {}",
       n
     ))),
@@ -1244,7 +1073,6 @@ pub fn quoot_is_nil(
 }
 
 pub fn quoot_is_bool(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1256,7 +1084,7 @@ pub fn quoot_is_bool(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "bool?: need 1 argument, got {}",
       n
     ))),
@@ -1264,7 +1092,6 @@ pub fn quoot_is_bool(
 }
 
 pub fn quoot_is_list(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1276,7 +1103,7 @@ pub fn quoot_is_list(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "list?: need 1 argument, got {}",
       n
     ))),
@@ -1284,7 +1111,6 @@ pub fn quoot_is_list(
 }
 
 pub fn quoot_is_num(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1296,7 +1122,7 @@ pub fn quoot_is_num(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "num?: need 1 argument, got {}",
       n
     ))),
@@ -1304,7 +1130,6 @@ pub fn quoot_is_num(
 }
 
 pub fn quoot_is_nan(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1316,7 +1141,7 @@ pub fn quoot_is_nan(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "nan?: need 1 argument, got {}",
       n
     ))),
@@ -1324,7 +1149,6 @@ pub fn quoot_is_nan(
 }
 
 pub fn quoot_is_inf(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1336,7 +1160,7 @@ pub fn quoot_is_inf(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "inf?: need 1 argument, got {}",
       n
     ))),
@@ -1344,7 +1168,6 @@ pub fn quoot_is_inf(
 }
 
 pub fn quoot_is_zero(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1359,7 +1182,7 @@ pub fn quoot_is_zero(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "zero?: need 1 argument, got {}",
       n
     ))),
@@ -1367,7 +1190,6 @@ pub fn quoot_is_zero(
 }
 
 pub fn quoot_is_neg(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1382,7 +1204,7 @@ pub fn quoot_is_neg(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "neg?: need 1 argument, got {}",
       n
     ))),
@@ -1390,7 +1212,6 @@ pub fn quoot_is_neg(
 }
 
 pub fn quoot_is_pos(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1405,7 +1226,7 @@ pub fn quoot_is_pos(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "pos?: need 1 argument, got {}",
       n
     ))),
@@ -1413,7 +1234,6 @@ pub fn quoot_is_pos(
 }
 
 pub fn quoot_is_string(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1425,7 +1245,7 @@ pub fn quoot_is_string(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "str?: need 1 argument, got {}",
       n
     ))),
@@ -1433,7 +1253,6 @@ pub fn quoot_is_string(
 }
 
 pub fn quoot_is_symbol(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1445,7 +1264,7 @@ pub fn quoot_is_symbol(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "symbol?: need 1 argument, got {}",
       n
     ))),
@@ -1453,7 +1272,6 @@ pub fn quoot_is_symbol(
 }
 
 pub fn quoot_is_op(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1465,7 +1283,7 @@ pub fn quoot_is_op(
         _ => false,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "op?: need 1 argument, got {}",
       n
     ))),
@@ -1473,7 +1291,6 @@ pub fn quoot_is_op(
 }
 
 pub fn quoot_is_empty(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1484,14 +1301,14 @@ pub fn quoot_is_empty(
         Value::Nil => true,
         Value::List(list) => list.is_empty()?,
         other => {
-          return Err(EvalError::OperatorError(format!(
+          return Err(EvalError::OpError(format!(
             "empty?: cannot check whether type {} is empty",
             other.type_string()
           )))
         }
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "empty?: need 1 argument, got {}",
       n
     ))),
@@ -1499,7 +1316,6 @@ pub fn quoot_is_empty(
 }
 
 pub fn quoot_is_even(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1513,7 +1329,7 @@ pub fn quoot_is_even(
         Num::Float(f) => f % 2.0 == 0.0,
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "even?: need 1 argument, got {}",
       n
     ))),
@@ -1521,7 +1337,6 @@ pub fn quoot_is_even(
 }
 
 pub fn quoot_first(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1543,13 +1358,13 @@ pub fn quoot_first(
         }
       }),
       other => {
-        return Err(EvalError::OperatorError(format!(
+        return Err(EvalError::OpError(format!(
           "first: cannot get the first element of type <{}>",
           other.type_string()
         )))
       }
     },
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "first: need 1 argument, got {}",
       n
     ))),
@@ -1557,7 +1372,6 @@ pub fn quoot_first(
 }
 
 pub fn quoot_last(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1577,13 +1391,13 @@ pub fn quoot_last(
         }
       }),
       other => {
-        return Err(EvalError::OperatorError(format!(
+        return Err(EvalError::OpError(format!(
           "last: cannot get the last element of type <{}>",
           other.type_string()
         )))
       }
     },
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "last: need 1 argument, got {}",
       n
     ))),
@@ -1591,7 +1405,6 @@ pub fn quoot_last(
 }
 
 pub fn quoot_rest(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1602,7 +1415,7 @@ pub fn quoot_rest(
         .as_list("rest")?
         .rest()?,
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "first: need 1 argument, got {}",
       n
     ))),
@@ -1610,7 +1423,6 @@ pub fn quoot_rest(
 }
 
 pub fn quoot_reverse(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1626,7 +1438,7 @@ pub fn quoot_reverse(
       }
       Ok(Value::from(new_list))
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "reverse: need 1 argument, got {}",
       n
     ))),
@@ -1634,7 +1446,6 @@ pub fn quoot_reverse(
 }
 
 pub fn quoot_bool(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1643,7 +1454,7 @@ pub fn quoot_bool(
     1 => Ok(Value::Bool(
       maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool(),
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "bool: need 1 argument, got {}",
       n
     ))),
@@ -1651,7 +1462,6 @@ pub fn quoot_bool(
 }
 
 pub fn quoot_not(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1660,7 +1470,7 @@ pub fn quoot_not(
     1 => Ok(Value::Bool(
       !maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool(),
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "bool: need 1 argument, got {}",
       n
     ))),
@@ -1668,7 +1478,6 @@ pub fn quoot_not(
 }
 
 pub fn quoot_and(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1688,7 +1497,6 @@ pub fn quoot_and(
 }
 
 pub fn quoot_or(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1708,7 +1516,6 @@ pub fn quoot_or(
 }
 
 pub fn quoot_int(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1719,7 +1526,7 @@ pub fn quoot_int(
         .as_num("int")?
         .floor(),
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "int: need 1 argument, got {}",
       n
     ))),
@@ -1727,7 +1534,6 @@ pub fn quoot_int(
 }
 
 pub fn quoot_abs(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1739,7 +1545,7 @@ pub fn quoot_abs(
         Num::Float(f) => Num::Float(f.abs()),
       },
     )),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "abs: need 1 argument, got {}",
       n
     ))),
@@ -1747,7 +1553,6 @@ pub fn quoot_abs(
 }
 
 pub fn quoot_sqrt(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1759,7 +1564,7 @@ pub fn quoot_sqrt(
         .as_float()
         .sqrt(),
     ))),
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "sqrt: need 1 argument, got {}",
       n
     ))),
@@ -1767,7 +1572,6 @@ pub fn quoot_sqrt(
 }
 
 pub fn quoot_filter(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1790,13 +1594,13 @@ pub fn quoot_filter(
         let original_list = builder_values.get(1).unwrap().as_list("filter")?;
         let predicate = builder_values.get(2).unwrap().as_op("filter")?;
         while let Some(value) = original_list.get(index)? {
-          if (predicate.f)(
-            &predicate,
-            &state.captured_environment.as_ref().unwrap(),
-            &StrictList::unit(value.clone()),
-            false,
-          )?
-          .as_bool()
+          if predicate
+            .apply(
+              &state.captured_environment.as_ref().unwrap(),
+              &StrictList::unit(value.clone()),
+              false,
+            )?
+            .as_bool()
           {
             let mut new_builder_values = StrictList::new();
             new_builder_values.push_back(Value::from(index + 1));
@@ -1818,7 +1622,7 @@ pub fn quoot_filter(
       ),
     )))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "filter: need 2 arguments, got {}",
       args.len()
     )))
@@ -1826,7 +1630,6 @@ pub fn quoot_filter(
 }
 
 pub fn quoot_map(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1857,8 +1660,7 @@ pub fn quoot_map(
           }
         }
         if !state.is_finished {
-          state.realized_values.push_back((op.f)(
-            &op,
+          state.realized_values.push_back(op.apply(
             &state.captured_environment.as_ref().unwrap(),
             &StrictList::from(op_args),
             false,
@@ -1873,7 +1675,7 @@ pub fn quoot_map(
       ),
     )))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "map: need at least 2 arguments, got {}",
       args.len()
     )))
@@ -1881,7 +1683,6 @@ pub fn quoot_map(
 }
 
 pub fn quoot_greater(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1891,7 +1692,7 @@ pub fn quoot_greater(
     let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a > b))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       ">: need 2 arguments, got {}",
       args.len()
     )))
@@ -1899,7 +1700,6 @@ pub fn quoot_greater(
 }
 
 pub fn quoot_greater_or_equal(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1909,7 +1709,7 @@ pub fn quoot_greater_or_equal(
     let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a >= b))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       ">=: need 2 arguments, got {}",
       args.len()
     )))
@@ -1917,7 +1717,6 @@ pub fn quoot_greater_or_equal(
 }
 
 pub fn quoot_less(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1927,7 +1726,7 @@ pub fn quoot_less(
     let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a < b))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "<: need 2 arguments, got {}",
       args.len()
     )))
@@ -1935,7 +1734,6 @@ pub fn quoot_less(
 }
 
 pub fn quoot_less_or_equal(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1945,7 +1743,7 @@ pub fn quoot_less_or_equal(
     let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a <= b))
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "<=: need 2 arguments, got {}",
       args.len()
     )))
@@ -1953,7 +1751,6 @@ pub fn quoot_less_or_equal(
 }
 
 pub fn quoot_if(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -1967,7 +1764,7 @@ pub fn quoot_if(
       eval_args,
     )?)
   } else {
-    Err(EvalError::OperatorError(format!(
+    Err(EvalError::OpError(format!(
       "if: need 3 arguments, got {}",
       args.len()
     )))
@@ -1975,7 +1772,6 @@ pub fn quoot_if(
 }
 
 pub fn quoot_rand(
-  _op_self: &Op,
   _env: &Env,
   _args: &StrictList,
   _eval_args: bool,
@@ -1984,7 +1780,6 @@ pub fn quoot_rand(
 }
 
 pub fn quoot_repeat(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -2018,7 +1813,7 @@ pub fn quoot_repeat(
       }
       Ok(Value::from(StrictList::from(values)))
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "repeatedly: need 1 or 2 arguments, got {}",
       n
     ))),
@@ -2026,7 +1821,6 @@ pub fn quoot_repeat(
 }
 
 pub fn quoot_repeatedly(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -2040,8 +1834,7 @@ pub fn quoot_repeatedly(
           let generator_op =
             lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
               .as_op("repeatedly")?;
-          let value = (generator_op.f)(
-            &generator_op,
+          let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
             &StrictList::new(),
             false,
@@ -2064,16 +1857,11 @@ pub fn quoot_repeatedly(
         .floor();
       let mut values: Vec<Value> = vec![];
       for _ in 0..count {
-        values.push((generator_op.f)(
-          &generator_op,
-          &env,
-          &StrictList::new(),
-          false,
-        )?)
+        values.push(generator_op.apply(&env, &StrictList::new(), false)?)
       }
       Ok(Value::from(StrictList::from(values)))
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "repeatedly: need 1 or 2 arguments, got {}",
       n
     ))),
@@ -2081,7 +1869,6 @@ pub fn quoot_repeatedly(
 }
 
 pub fn quoot_iterate(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -2095,8 +1882,7 @@ pub fn quoot_iterate(
           let generator_op =
             lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
               .as_op("iterate")?;
-          let value = (generator_op.f)(
-            &generator_op,
+          let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
             &StrictList::unit(
               lazy_state.realized_values.last().unwrap().to_owned(),
@@ -2120,11 +1906,11 @@ pub fn quoot_iterate(
         .as_num("iterate")?
         .floor();
       for _ in 0..count as usize {
-        value = (op.f)(&op, env, &StrictList::unit(value), false)?;
+        value = op.apply(env, &StrictList::unit(value), false)?;
       }
       Ok(value)
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "repeatedly: need 2 or 3 arguments, got {}",
       n
     ))),
@@ -2132,7 +1918,6 @@ pub fn quoot_iterate(
 }
 
 pub fn quoot_time(
-  _op_self: &Op,
   env: &Env,
   args: &StrictList,
   eval_args: bool,
@@ -2144,7 +1929,7 @@ pub fn quoot_time(
       println!("{:.2?}", timer.elapsed());
       Ok(value)
     }
-    n => Err(EvalError::OperatorError(format!(
+    n => Err(EvalError::OpError(format!(
       "time: need 1 argument, got {}",
       n
     ))),
@@ -2165,7 +1950,7 @@ pub fn default_bindings() -> Bindings {
   });
   let operator_bindings: &[(
     &str,
-    fn(&Op, &Env, &StrictList, bool) -> Result<Value, EvalError>,
+    fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
   )] = &[
     ("time", quoot_time),
     ("let", quoot_let),
@@ -2240,7 +2025,7 @@ pub fn default_bindings() -> Bindings {
     ("iterate", quoot_iterate),
   ];
   operator_bindings.iter().for_each(|(name, op)| {
-    bindings.insert(name.to_string(), Value::Op(Op::new(op)));
+    bindings.insert(name.to_string(), Value::Op(Op::Core(CoreOp::new(op))));
   });
   bindings
 }

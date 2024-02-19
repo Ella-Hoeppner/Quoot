@@ -2,6 +2,7 @@ use crate::parse::{ParseError, Sexp};
 use imbl::{HashMap, Vector};
 use std::{
   fmt,
+  rc::Rc,
   sync::{Arc, RwLock},
 };
 
@@ -20,7 +21,7 @@ pub enum Value {
 pub enum EvalError {
   Parse(ParseError),
   UnboundSymbolError(String),
-  OperatorError(String),
+  OpError(String),
   OutOfBoundsError(String, i64, i64),
   DefineError(String),
 }
@@ -34,20 +35,144 @@ pub enum List {
 pub type StrictList = Vector<Value>;
 
 #[derive(Clone)]
-pub struct Op {
-  pub f:
-    &'static dyn Fn(&Op, &Env, &StrictList, bool) -> Result<Value, EvalError>,
+pub enum Op {
+  Core(CoreOp),
+  User(UserOp),
+  Composition(Vec<Op>),
+  Partial(Rc<Op>, Vector<Value>),
+  Applied(Rc<Op>),
+  ListAccess(List),
 }
+
 impl Op {
+  pub fn apply(
+    &self,
+    env: &Env,
+    args: &StrictList,
+    eval_args: bool,
+  ) -> Result<Value, EvalError> {
+    match self {
+      Op::Core(op) => (op.f)(env, args, eval_args),
+      Op::ListAccess(list) => {
+        if args.len() == 1 {
+          let index = maybe_eval(env, args.front().unwrap(), eval_args)?
+            .as_num("<List>")?
+            .floor();
+          match list.get(index)? {
+            Some(value) => Ok(value),
+            None => Err(EvalError::OutOfBoundsError(
+              "<List application>".to_owned(),
+              index,
+              list.as_strict()?.len() as i64,
+            )),
+          }
+        } else {
+          Err(EvalError::OpError(format!(
+            "<List>: need 1 argument, got {}",
+            args.len(),
+          )))
+        }
+      }
+      Op::User(op) => {
+        if args.len() != op.arg_names.len() {
+          return Err(EvalError::OpError(format!(
+            "User Op{} needs {} arguments, got {}",
+            if let Some(name) = &op.name {
+              format!(" {}", name)
+            } else {
+              "".to_owned()
+            },
+            op.arg_names.len(),
+            args.len()
+          )));
+        }
+        let maybe_evaled_args =
+          maybe_eval_all(env, args, eval_args && op.evals_args)?;
+        let mut body_env = op.env.clone();
+        for i in 0..maybe_evaled_args.len() {
+          body_env.bind(&op.arg_names[i], maybe_evaled_args[i].clone())
+        }
+        if let Some(name) = &op.name {
+          body_env.bind(&name, Value::Op(Op::User(op.clone())))
+        }
+        let mut body_values = op
+          .body
+          .iter()
+          .map(|value| eval(&body_env, value))
+          .collect::<Result<Vec<Value>, EvalError>>()?;
+        Ok(body_values.pop().unwrap())
+      }
+      Op::Composition(ops) => {
+        let op = &ops[0];
+        let mut value =
+          op.apply(env, &maybe_eval_all(env, args, eval_args)?, false)?;
+        for op in &ops[1..] {
+          value = op.apply(env, &StrictList::unit(value), false)?;
+        }
+        Ok(value)
+      }
+      Op::Partial(op, prefix_args) => {
+        let mut full_args = prefix_args.clone();
+        full_args.append(args.clone());
+        op.apply(env, &full_args, eval_args)
+      }
+      Op::Applied(op) => {
+        if args.len() == 1 {
+          op.apply(
+            env,
+            &maybe_eval(env, &args[0], eval_args)?
+              .as_list("apply")?
+              .as_strict()?,
+            eval_args,
+          )
+        } else {
+          Err(EvalError::OpError(format!(
+            "<Applied Op>: op constructed with 1-argument apply call needs 1 \
+            argument, got {}",
+            args.len(),
+          )))
+        }
+      }
+    }
+  }
+}
+
+#[derive(Clone)]
+pub struct UserOp {
+  name: Option<String>,
+  env: Env,
+  arg_names: Vec<String>,
+  body: StrictList,
+  evals_args: bool,
+}
+
+impl UserOp {
   pub fn new(
-    f: &'static dyn Fn(
-      &Op,
-      &Env,
-      &StrictList,
-      bool,
-    ) -> Result<Value, EvalError>,
-  ) -> Op {
-    Op { f }
+    name: Option<String>,
+    env: Env,
+    arg_names: Vec<String>,
+    body: StrictList,
+    evals_args: bool,
+  ) -> Self {
+    Self {
+      name,
+      env,
+      arg_names,
+      body,
+      evals_args,
+    }
+  }
+}
+
+#[derive(Clone)]
+pub struct CoreOp {
+  pub f: &'static dyn Fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
+}
+impl CoreOp {
+  pub fn new(
+    f: &'static dyn Fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
+  ) -> Self {
+    Self { f }
   }
 }
 
@@ -226,7 +351,7 @@ impl Value {
       Value::Nil => Ok(Num::Int(0)),
       Value::Num(num) => Ok(num.clone()),
       _ => {
-        return Err(EvalError::OperatorError(format!(
+        return Err(EvalError::OpError(format!(
           "{}: can't get num from type {}",
           error_prefix,
           self.type_string()
@@ -239,7 +364,7 @@ impl Value {
       Value::Nil => Ok(List::Strict(StrictList::new())),
       Value::List(list) => Ok(list.clone()),
       _ => {
-        return Err(EvalError::OperatorError(format!(
+        return Err(EvalError::OpError(format!(
           "{}: can't get list from type {}",
           error_prefix,
           self.type_string()
@@ -252,31 +377,10 @@ impl Value {
       Value::Op(op) => Ok(op.clone()),
       Value::List(list) => {
         let cloned_list = list.clone();
-        Ok(Op::new(Box::leak(Box::new(
-          move |_op_self: &Op, env: &Env, args: &StrictList, eval_args| {
-            if args.len() == 1 {
-              let index = maybe_eval(env, args.front().unwrap(), eval_args)?
-                .as_num("<List>")?
-                .floor();
-              match cloned_list.get(index)? {
-                Some(value) => Ok(value),
-                None => Err(EvalError::OutOfBoundsError(
-                  "<List application>".to_owned(),
-                  index,
-                  cloned_list.as_strict()?.len() as i64,
-                )),
-              }
-            } else {
-              Err(EvalError::OperatorError(format!(
-                "<List>: need 1 argument, got {}",
-                args.len(),
-              )))
-            }
-          },
-        ))))
+        Ok(Op::ListAccess(cloned_list))
       }
       _ => {
-        return Err(EvalError::OperatorError(format!(
+        return Err(EvalError::OpError(format!(
           "{}: can't use type {} as a function",
           error_prefix,
           self.type_string()
@@ -563,7 +667,7 @@ pub fn eval(env: &Env, value: &Value) -> Result<Value, EvalError> {
           let op = eval(env, first_value)?.as_op("eval")?;
           let mut cloned_values = values.clone();
           cloned_values.pop_front();
-          (op.f)(&op, env, &cloned_values, true)
+          op.apply(env, &cloned_values, true)
         }
       }
     }
@@ -613,5 +717,24 @@ pub fn maybe_eval(
     eval(env, value)
   } else {
     Ok(value.to_owned())
+  }
+}
+
+pub fn maybe_eval_all(
+  env: &Env,
+  values: &StrictList,
+  eval_args: bool,
+) -> Result<StrictList, EvalError> {
+  if eval_args {
+    Ok(StrictList::from(
+      values
+        .iter()
+        .map(|value| eval(env, value))
+        .collect::<Vec<Result<Value, EvalError>>>()
+        .into_iter()
+        .collect::<Result<Vec<Value>, EvalError>>()?,
+    ))
+  } else {
+    Ok(values.clone())
   }
 }

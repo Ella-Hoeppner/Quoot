@@ -60,8 +60,8 @@ fn main() {
                                                         (inc depth)))))))))))))))))".to_owned(),
   "(let [tree (time (iterate (fn [t] (kd-insert t [(rand) (rand) (rand)] 0)) \
                             nil \
-                            1000))] \
+                            10000))] \
     (time (count (map (fn [p] (kd-nearest tree p 0)) \
                       (repeatedly (fn [] [(rand) (rand) (rand)]) \
-                                  1000)))))".to_owned()]);
+                                  10000)))))".to_owned()]);
 }
