@@ -6,8 +6,8 @@ mod parse;
 use interpreter::{evaluate_program, repl};
 
 fn main() {
-  //let _ = repl();
-  let _ = evaluate_program(vec![
+  let _ = repl();
+  /*let _ = evaluate_program(vec![
   "(def magnitude (fn [v] (sqrt (apply + (map (fn [x] (* x x)) v)))))".to_owned(),
   "(def distance (. magnitude (| map -)))".to_owned(),
   "(def kd-insert \
@@ -60,8 +60,8 @@ fn main() {
                                                         (inc depth)))))))))))))))))".to_owned(),
   "(let [tree (time (iterate (fn [t] (kd-insert t [(rand) (rand) (rand)] 0)) \
                             nil \
-                            10000))] \
+                            100))] \
     (time (count (map (fn [p] (kd-nearest tree p 0)) \
                       (repeatedly (fn [] [(rand) (rand) (rand)]) \
-                                  10000)))))".to_owned()]);
+                                  100)))))".to_owned()]);*/
 }
