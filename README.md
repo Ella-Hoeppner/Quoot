@@ -171,8 +171,15 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
+* Represent ops/fns as bodies, list of argument names, and captured environments, rather than as rust closures
+  * can't be calling Box::leak everywhere
+  * will have to re-work laziness as well
+    * maybe have a Realizer be a trait, and have lazy lists store a Box<dyn Realizer>
+* profile to figure out kd tree is so slow
+  * very surprised that it's so much slower than clj/cljs
+    * wouldn't expect it to be quite as fast but 2 orders of magnitude just doesn't make sense
+      * is something wrong with laziness? maybe a bunch of things are getting evaluated multiple times?
 * multiple bindings in a let block, that can depend on one another
-* port cljs kd-tree implementation to quoot for a performance test
 * Use &str rather than String for string objects
   * actually might I run into borrowing/ownership problems if I try to do this?
     * not really sure, probably worth trying

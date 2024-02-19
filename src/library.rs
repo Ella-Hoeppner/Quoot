@@ -1993,9 +1993,9 @@ pub fn quoot_if(
 
 pub fn quoot_rand(
   _op_self: &QuootOp,
-  env: &Env,
-  args: &QuootStrictList,
-  eval_args: bool,
+  _env: &Env,
+  _args: &QuootStrictList,
+  _eval_args: bool,
 ) -> Result<QuootValue, QuootEvalError> {
   Ok(QuootValue::Num(Num::Float(rand::random::<f64>())))
 }

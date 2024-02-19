@@ -1,3 +1,4 @@
 /target
 .DS_Store
 history.txt
+flamegraph.svg
