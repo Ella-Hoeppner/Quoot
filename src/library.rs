@@ -75,45 +75,55 @@ pub fn quoot_let(
   args: &StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
-  if args.len() == 2 {
-    let bindings = args.front().unwrap();
-    match bindings {
-      Value::List(List::Strict(list)) => {
-        let mut list_clone = List::deliteralize(list.clone());
-        if list_clone.len() % 2 == 0 {
-          let mut sub_env = env.clone();
-          while let Some(binding_name) = list_clone.pop_front() {
-            match binding_name {
-              Value::Symbol(name) => {
-                let binding_value =
-                  maybe_eval(env, &list_clone.pop_front().unwrap(), eval_args)?;
-                sub_env.bind(&name, binding_value);
-              }
-              other => {
-                return Err(EvalError::OpError(format!(
-                  "let: names must be symbols, got <{}>",
-                  other.type_string()
-                )))
-              }
+  if args.len() < 2 {
+    return Err(EvalError::OpError(format!(
+      "let: need at least 2 arguments, got {}",
+      args.len()
+    )));
+  }
+  let mut args_iter = args.iter();
+  match args_iter.next().unwrap() {
+    Value::List(List::Strict(list)) => {
+      let mut list_clone = List::deliteralize(list.clone());
+      if list_clone.len() % 2 == 0 {
+        let mut let_env = env.clone();
+        while let Some(binding_name) = list_clone.pop_front() {
+          match binding_name {
+            Value::Symbol(name) => {
+              let binding_value = maybe_eval(
+                &let_env,
+                &list_clone.pop_front().unwrap(),
+                eval_args,
+              )?;
+              let_env.bind(&name, binding_value);
+            }
+            other => {
+              return Err(EvalError::OpError(format!(
+                "let: names must be symbols, got <{}>",
+                other.type_string()
+              )))
             }
           }
-          maybe_eval(&sub_env, args.get(1).unwrap(), eval_args)
-        } else {
-          Err(EvalError::OpError(format!(
-            "let: first argument needs an even number of forms"
-          )))
         }
+        Ok(
+          args
+            .iter()
+            .skip(1)
+            .map(|value| maybe_eval(&let_env, value, eval_args))
+            .collect::<Result<Vec<Value>, EvalError>>()?
+            .pop()
+            .unwrap(),
+        )
+      } else {
+        Err(EvalError::OpError(format!(
+          "let: first argument needs an even number of forms"
+        )))
       }
-      other => Err(EvalError::OpError(format!(
-        "let: first argument must be a list literal, got <{}>",
-        other.type_string()
-      ))),
     }
-  } else {
-    Err(EvalError::OpError(format!(
-      "let: need 2 arguments, got {}",
-      args.len()
-    )))
+    other => Err(EvalError::OpError(format!(
+      "let: first argument must be a list literal, got <{}>",
+      other.type_string()
+    ))),
   }
 }
 
