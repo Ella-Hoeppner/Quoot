@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Debug, PartialEq)]
-pub enum QuootParseError {
+pub enum ParseError {
   UnmatchedCloser(String),
   MismatchedCloser(String, String),
   UnclosedOpener(String),
@@ -143,7 +143,7 @@ impl ParserState {
   }
 }
 
-pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
+pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, ParseError> {
   if chars.is_empty() {
     return Ok(Sexp::Leaf("nil".to_string()));
   }
@@ -190,13 +190,11 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       None => (),
       Some(closer) => match open_list {
         None => {
-          return Err(QuootParseError::UnmatchedCloser(
-            closer.1.iter().collect(),
-          ))
+          return Err(ParseError::UnmatchedCloser(closer.1.iter().collect()))
         }
         Some((opener, _)) => {
           if !was_expected_closer_matched {
-            return Err(QuootParseError::MismatchedCloser(
+            return Err(ParseError::MismatchedCloser(
               opener.iter().collect(),
               closer.1.iter().collect(),
             ));
@@ -241,7 +239,7 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
       loop {
         char_index += 1;
         if char_index >= chars.len() {
-          return Err(QuootParseError::UnclosedString);
+          return Err(ParseError::UnclosedString);
         }
         let string_char = chars[char_index];
         if string_char == '\\' {
@@ -319,14 +317,14 @@ pub fn parse_chars(chars: Vec<char>) -> Result<Sexp, QuootParseError> {
   // Throw an error if there are any open lists at the end of the string.
   match parser_state.get_open_list() {
     Some((opener, _)) => {
-      return Err(QuootParseError::UnclosedOpener(opener.iter().collect()))
+      return Err(ParseError::UnclosedOpener(opener.iter().collect()))
     }
     None => (),
   }
   return Ok(parser_state.finish());
 }
 
-pub fn parse(s: &str) -> Result<Sexp, QuootParseError> {
+pub fn parse(s: &str) -> Result<Sexp, ParseError> {
   parse_chars(s.chars().collect())
 }
 

@@ -1,4 +1,4 @@
-use crate::parse::{QuootParseError, Sexp};
+use crate::parse::{ParseError, Sexp};
 use imbl::{HashMap, Vector};
 use std::{
   fmt,
@@ -6,19 +6,19 @@ use std::{
 };
 
 #[derive(Clone)]
-pub enum QuootValue {
+pub enum Value {
   Nil,
   Bool(bool),
   Num(Num),
   String(String),
   Symbol(String),
-  List(QuootList),
-  Op(QuootOp),
+  List(List),
+  Op(Op),
 }
 
 #[derive(Debug, PartialEq)]
-pub enum QuootEvalError {
-  Parse(QuootParseError),
+pub enum EvalError {
+  Parse(ParseError),
   UnboundSymbolError(String),
   OperatorError(String),
   OutOfBoundsError(String, i64, i64),
@@ -26,36 +26,32 @@ pub enum QuootEvalError {
 }
 
 #[derive(Clone)]
-pub enum QuootList {
-  Strict(QuootStrictList),
-  Lazy(QuootLazyList),
+pub enum List {
+  Strict(StrictList),
+  Lazy(LazyList),
 }
 
-pub type QuootStrictList = Vector<QuootValue>;
+pub type StrictList = Vector<Value>;
 
 #[derive(Clone)]
-pub struct QuootOp {
-  pub f: &'static dyn Fn(
-    &QuootOp,
-    &Env,
-    &QuootStrictList,
-    bool,
-  ) -> Result<QuootValue, QuootEvalError>,
+pub struct Op {
+  pub f:
+    &'static dyn Fn(&Op, &Env, &StrictList, bool) -> Result<Value, EvalError>,
 }
-impl QuootOp {
+impl Op {
   pub fn new(
     f: &'static dyn Fn(
-      &QuootOp,
+      &Op,
       &Env,
-      &QuootStrictList,
+      &StrictList,
       bool,
-    ) -> Result<QuootValue, QuootEvalError>,
-  ) -> QuootOp {
-    QuootOp { f }
+    ) -> Result<Value, EvalError>,
+  ) -> Op {
+    Op { f }
   }
 }
 
-pub type Bindings = HashMap<String, QuootValue>;
+pub type Bindings = HashMap<String, Value>;
 
 #[derive(Default, Clone)]
 pub struct Env {
@@ -68,17 +64,17 @@ pub enum Num {
   Float(f64),
 }
 
-impl QuootList {
-  pub fn as_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
+impl List {
+  pub fn as_strict(&self) -> Result<StrictList, EvalError> {
     match self {
-      QuootList::Strict(list) => Ok(list.clone()),
-      QuootList::Lazy(list) => Ok(list.as_strict()?),
+      List::Strict(list) => Ok(list.clone()),
+      List::Lazy(list) => Ok(list.as_strict()?),
     }
   }
-  pub fn is_empty(&self) -> Result<bool, QuootEvalError> {
+  pub fn is_empty(&self) -> Result<bool, EvalError> {
     Ok(match self {
-      QuootList::Strict(list) => list.len() == 0,
-      QuootList::Lazy(list) => {
+      List::Strict(list) => list.len() == 0,
+      List::Lazy(list) => {
         if list.realized_len() > 0 {
           true
         } else {
@@ -87,28 +83,28 @@ impl QuootList {
       }
     })
   }
-  pub fn get(&self, n: i64) -> Result<Option<QuootValue>, QuootEvalError> {
+  pub fn get(&self, n: i64) -> Result<Option<Value>, EvalError> {
     match self {
-      QuootList::Strict(strict_list) => {
+      List::Strict(strict_list) => {
         Ok(strict_list.get(n as usize).map(|e| e.clone()))
       }
-      QuootList::Lazy(lazy_list) => lazy_list.get(n as usize),
+      List::Lazy(lazy_list) => lazy_list.get(n as usize),
     }
   }
-  pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
+  pub fn rest(&self) -> Result<List, EvalError> {
     match self {
-      QuootList::Strict(strict_list) => {
+      List::Strict(strict_list) => {
         let mut list_clone = strict_list.clone();
         list_clone.pop_front();
-        Ok(QuootList::Strict(list_clone))
+        Ok(List::Strict(list_clone))
       }
-      QuootList::Lazy(lazy_list) => lazy_list.rest(),
+      List::Lazy(lazy_list) => lazy_list.rest(),
     }
   }
-  pub fn deliteralize(mut list: QuootStrictList) -> QuootStrictList {
+  pub fn deliteralize(mut list: StrictList) -> StrictList {
     match list.get(0) {
       Some(value) => match value {
-        QuootValue::Symbol(name) => {
+        Value::Symbol(name) => {
           if name == "#list" {
             list.pop_front();
             list
@@ -123,13 +119,13 @@ impl QuootList {
   }
 }
 
-impl PartialEq for QuootList {
+impl PartialEq for List {
   fn eq(&self, other: &Self) -> bool {
     self.as_strict() == other.as_strict()
   }
 }
 
-impl PartialEq for QuootValue {
+impl PartialEq for Value {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
       (Self::List(a), Self::List(b)) => a == b,
@@ -141,96 +137,96 @@ impl PartialEq for QuootValue {
   }
 }
 
-impl From<QuootStrictList> for QuootValue {
-  fn from(value: QuootStrictList) -> Self {
-    QuootValue::List(QuootList::Strict(value))
+impl From<StrictList> for Value {
+  fn from(value: StrictList) -> Self {
+    Value::List(List::Strict(value))
   }
 }
 
-impl From<QuootLazyList> for QuootValue {
-  fn from(value: QuootLazyList) -> Self {
-    QuootValue::List(QuootList::Lazy(value))
+impl From<LazyList> for Value {
+  fn from(value: LazyList) -> Self {
+    Value::List(List::Lazy(value))
   }
 }
 
-impl From<i64> for QuootValue {
+impl From<i64> for Value {
   fn from(value: i64) -> Self {
-    QuootValue::Num(Num::Int(value))
+    Value::Num(Num::Int(value))
   }
 }
 
-impl From<f64> for QuootValue {
+impl From<f64> for Value {
   fn from(value: f64) -> Self {
-    QuootValue::Num(Num::Float(value))
+    Value::Num(Num::Float(value))
   }
 }
 
-impl From<usize> for QuootValue {
+impl From<usize> for Value {
   fn from(value: usize) -> Self {
-    QuootValue::from(value as i64)
+    Value::from(value as i64)
   }
 }
 
-impl QuootValue {
-  pub fn from_token(token: &String) -> QuootValue {
+impl Value {
+  pub fn from_token(token: &String) -> Value {
     let chars: Vec<char> = token.chars().collect();
     if chars[0] == '"' {
-      return QuootValue::String(chars[1..chars.len() - 1].iter().collect());
+      return Value::String(chars[1..chars.len() - 1].iter().collect());
     }
     if token == "nil" {
-      return QuootValue::Nil;
+      return Value::Nil;
     }
     if token == "true" {
-      return QuootValue::Bool(true);
+      return Value::Bool(true);
     }
     if token == "false" {
-      return QuootValue::Bool(false);
+      return Value::Bool(false);
     }
     match token.parse::<i64>() {
-      Ok(int) => return QuootValue::Num(Num::Int(int)),
+      Ok(int) => return Value::Num(Num::Int(int)),
       Err(_) => match token.parse::<f64>() {
-        Ok(float) => return QuootValue::Num(Num::Float(float)),
+        Ok(float) => return Value::Num(Num::Float(float)),
         Err(_) => (),
       },
     }
-    QuootValue::Symbol(token.clone())
+    Value::Symbol(token.clone())
   }
-  pub fn from_sexp(sexp: &Sexp) -> QuootValue {
+  pub fn from_sexp(sexp: &Sexp) -> Value {
     match sexp {
       Sexp::List(sub_sexps) => {
-        let mut v = QuootStrictList::new();
+        let mut v = StrictList::new();
         sub_sexps
           .iter()
-          .for_each(|sub_sexp| v.push_back(QuootValue::from_sexp(sub_sexp)));
-        QuootValue::List(QuootList::Strict(v))
+          .for_each(|sub_sexp| v.push_back(Value::from_sexp(sub_sexp)));
+        Value::List(List::Strict(v))
       }
-      Sexp::Leaf(token) => QuootValue::from_token(token),
+      Sexp::Leaf(token) => Value::from_token(token),
     }
   }
   pub fn type_string(&self) -> String {
     match self {
-      QuootValue::Nil => "Nil",
-      QuootValue::Bool(_) => "Bool",
-      QuootValue::Num(num) => match num {
+      Value::Nil => "Nil",
+      Value::Bool(_) => "Bool",
+      Value::Num(num) => match num {
         Num::Int(_) => "Integer",
         Num::Float(_) => "Float",
       },
-      QuootValue::String(_) => "String",
-      QuootValue::Symbol(_) => "Symbol",
-      QuootValue::List(list) => match list {
-        QuootList::Strict(_) => "List",
-        QuootList::Lazy(_) => "LazyList",
+      Value::String(_) => "String",
+      Value::Symbol(_) => "Symbol",
+      Value::List(list) => match list {
+        List::Strict(_) => "List",
+        List::Lazy(_) => "LazyList",
       },
-      QuootValue::Op(_) => "Operator",
+      Value::Op(_) => "Operator",
     }
     .to_string()
   }
-  pub fn as_num(&self, error_prefix: &str) -> Result<Num, QuootEvalError> {
+  pub fn as_num(&self, error_prefix: &str) -> Result<Num, EvalError> {
     match self {
-      QuootValue::Nil => Ok(Num::Int(0)),
-      QuootValue::Num(num) => Ok(num.clone()),
+      Value::Nil => Ok(Num::Int(0)),
+      Value::Num(num) => Ok(num.clone()),
       _ => {
-        return Err(QuootEvalError::OperatorError(format!(
+        return Err(EvalError::OperatorError(format!(
           "{}: can't get num from type {}",
           error_prefix,
           self.type_string()
@@ -238,15 +234,12 @@ impl QuootValue {
       }
     }
   }
-  pub fn as_list(
-    &self,
-    error_prefix: &str,
-  ) -> Result<QuootList, QuootEvalError> {
+  pub fn as_list(&self, error_prefix: &str) -> Result<List, EvalError> {
     match self {
-      QuootValue::Nil => Ok(QuootList::Strict(QuootStrictList::new())),
-      QuootValue::List(list) => Ok(list.clone()),
+      Value::Nil => Ok(List::Strict(StrictList::new())),
+      Value::List(list) => Ok(list.clone()),
       _ => {
-        return Err(QuootEvalError::OperatorError(format!(
+        return Err(EvalError::OperatorError(format!(
           "{}: can't get list from type {}",
           error_prefix,
           self.type_string()
@@ -254,30 +247,27 @@ impl QuootValue {
       }
     }
   }
-  pub fn as_op(&self, error_prefix: &str) -> Result<QuootOp, QuootEvalError> {
+  pub fn as_op(&self, error_prefix: &str) -> Result<Op, EvalError> {
     match self {
-      QuootValue::Op(op) => Ok(op.clone()),
-      QuootValue::List(list) => {
+      Value::Op(op) => Ok(op.clone()),
+      Value::List(list) => {
         let cloned_list = list.clone();
-        Ok(QuootOp::new(Box::leak(Box::new(
-          move |_op_self: &QuootOp,
-                env: &Env,
-                args: &QuootStrictList,
-                eval_args| {
+        Ok(Op::new(Box::leak(Box::new(
+          move |_op_self: &Op, env: &Env, args: &StrictList, eval_args| {
             if args.len() == 1 {
               let index = maybe_eval(env, args.front().unwrap(), eval_args)?
                 .as_num("<List>")?
                 .floor();
               match cloned_list.get(index)? {
                 Some(value) => Ok(value),
-                None => Err(QuootEvalError::OutOfBoundsError(
+                None => Err(EvalError::OutOfBoundsError(
                   "<List application>".to_owned(),
                   index,
                   cloned_list.as_strict()?.len() as i64,
                 )),
               }
             } else {
-              Err(QuootEvalError::OperatorError(format!(
+              Err(EvalError::OperatorError(format!(
                 "<List>: need 1 argument, got {}",
                 args.len(),
               )))
@@ -286,7 +276,7 @@ impl QuootValue {
         ))))
       }
       _ => {
-        return Err(QuootEvalError::OperatorError(format!(
+        return Err(EvalError::OperatorError(format!(
           "{}: can't use type {} as a function",
           error_prefix,
           self.type_string()
@@ -296,23 +286,23 @@ impl QuootValue {
   }
   pub fn as_bool(&self) -> bool {
     match self {
-      QuootValue::Nil => false,
-      QuootValue::Bool(b) => *b,
+      Value::Nil => false,
+      Value::Bool(b) => *b,
       _ => true,
     }
   }
 }
 
-impl fmt::Display for QuootValue {
+impl fmt::Display for Value {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self {
-      QuootValue::Symbol(token) => fmt.write_str(token)?,
-      QuootValue::String(token) => {
+      Value::Symbol(token) => fmt.write_str(token)?,
+      Value::String(token) => {
         fmt.write_str("\"")?;
         fmt.write_str(token)?;
         fmt.write_str("\"")?;
       }
-      QuootValue::Num(num) => match num {
+      Value::Num(num) => match num {
         Num::Int(i) => fmt.write_str(&i.to_string()),
         Num::Float(f) => {
           if f.is_nan() {
@@ -332,7 +322,7 @@ impl fmt::Display for QuootValue {
           }
         }
       }?,
-      QuootValue::List(list) => match list.as_strict() {
+      Value::List(list) => match list.as_strict() {
         Ok(values) => {
           fmt.write_str("(")?;
           let mut separator = "";
@@ -345,11 +335,9 @@ impl fmt::Display for QuootValue {
         }
         Err(_) => return Err(fmt::Error),
       },
-      QuootValue::Nil => fmt.write_str("nil")?,
-      QuootValue::Bool(b) => {
-        fmt.write_str(if *b { "true" } else { "false" })?
-      }
-      QuootValue::Op(_) => fmt.write_str("<Operator>")?,
+      Value::Nil => fmt.write_str("nil")?,
+      Value::Bool(b) => fmt.write_str(if *b { "true" } else { "false" })?,
+      Value::Op(_) => fmt.write_str("<Operator>")?,
     }
     Ok(())
   }
@@ -359,17 +347,17 @@ impl Env {
   pub fn from_bindings(bindings: Bindings) -> Env {
     Env { bindings }
   }
-  pub fn bind(&mut self, name: &str, value: QuootValue) {
+  pub fn bind(&mut self, name: &str, value: Value) {
     self.bindings.insert(name.to_owned(), value);
   }
   pub fn bind_all(&mut self, bindings: Bindings) {
     self.bindings = bindings.union(self.bindings.to_owned());
   }
-  pub fn get(&self, name: &str) -> Result<&QuootValue, QuootEvalError> {
+  pub fn get(&self, name: &str) -> Result<&Value, EvalError> {
     self
       .bindings
       .get(name)
-      .ok_or(QuootEvalError::UnboundSymbolError(name.to_owned()))
+      .ok_or(EvalError::UnboundSymbolError(name.to_owned()))
   }
 }
 
@@ -460,19 +448,19 @@ impl PartialOrd for Num {
 }
 
 #[derive(Clone)]
-pub struct QuootLazyState {
-  pub realized_values: QuootStrictList,
-  pub builder_values: Option<QuootList>,
+pub struct LazyState {
+  pub realized_values: StrictList,
+  pub builder_values: Option<List>,
   pub captured_environment: Option<Env>,
   pub is_finished: bool,
 }
-impl QuootLazyState {
+impl LazyState {
   pub fn new(
-    prerealized_values: QuootStrictList,
-    initial_builder_values: Option<QuootList>,
+    prerealized_values: StrictList,
+    initial_builder_values: Option<List>,
     env: Option<Env>,
-  ) -> QuootLazyState {
-    QuootLazyState {
+  ) -> LazyState {
+    LazyState {
       realized_values: prerealized_values,
       builder_values: initial_builder_values,
       captured_environment: env,
@@ -480,20 +468,17 @@ impl QuootLazyState {
     }
   }
 }
-pub type QuootLazyRealizer =
-  &'static dyn Fn(&mut QuootLazyState) -> Result<(), QuootEvalError>;
+pub type LazyRealizer =
+  &'static dyn Fn(&mut LazyState) -> Result<(), EvalError>;
 #[derive(Clone)]
-pub struct QuootLazyList {
-  pub state: Arc<RwLock<QuootLazyState>>,
-  realizer: QuootLazyRealizer,
+pub struct LazyList {
+  pub state: Arc<RwLock<LazyState>>,
+  realizer: LazyRealizer,
 }
 
-impl QuootLazyList {
-  pub fn new(
-    realizer: QuootLazyRealizer,
-    state: QuootLazyState,
-  ) -> QuootLazyList {
-    QuootLazyList {
+impl LazyList {
+  pub fn new(realizer: LazyRealizer, state: LazyState) -> LazyList {
+    LazyList {
       state: Arc::new(RwLock::new(state)),
       realizer,
     }
@@ -501,7 +486,7 @@ impl QuootLazyList {
   pub fn realized_len(&self) -> usize {
     (*(*self.state).read().unwrap()).realized_values.len()
   }
-  fn realize(&self) -> Result<bool, QuootEvalError> {
+  fn realize(&self) -> Result<bool, EvalError> {
     let state = &mut (*self.state).write().unwrap();
     if !state.is_finished {
       (self.realizer)(state)?
@@ -514,7 +499,7 @@ impl QuootLazyList {
   pub fn realize_to(
     &self,
     length: usize,
-  ) -> Result<Option<&QuootLazyList>, QuootEvalError> {
+  ) -> Result<Option<&LazyList>, EvalError> {
     while (*self.state.read().unwrap()).realized_values.len() < length {
       if self.realize()? {
         return Ok(None);
@@ -522,15 +507,12 @@ impl QuootLazyList {
     }
     Ok(Some(self))
   }
-  pub fn fully_realize(&self) -> Result<&QuootLazyList, QuootEvalError> {
+  pub fn fully_realize(&self) -> Result<&LazyList, EvalError> {
     while !self.realize()? {}
     (*self.state).write().unwrap().is_finished = true;
     Ok(self)
   }
-  pub fn get(
-    &self,
-    index: usize,
-  ) -> Result<Option<QuootValue>, QuootEvalError> {
+  pub fn get(&self, index: usize) -> Result<Option<Value>, EvalError> {
     self.realize_to(index + 1)?;
     Ok(
       self
@@ -542,14 +524,14 @@ impl QuootLazyList {
         .map(|e| e.clone()),
     )
   }
-  pub fn rest(&self) -> Result<QuootList, QuootEvalError> {
+  pub fn rest(&self) -> Result<List, EvalError> {
     let state = (*self.state).read().unwrap();
     let mut cloned_values = state.realized_values.clone();
     cloned_values.pop_front();
     if state.is_finished {
-      Ok(QuootList::Strict(cloned_values))
+      Ok(List::Strict(cloned_values))
     } else {
-      Ok(QuootList::Lazy(QuootLazyList::new(
+      Ok(List::Lazy(LazyList::new(
         &|state| match &state.builder_values {
           Some(builder_state) => {
             match builder_state.get(state.realized_values.len() as i64 + 1)? {
@@ -560,30 +542,23 @@ impl QuootLazyList {
           }
           None => unreachable!(),
         },
-        QuootLazyState::new(
-          cloned_values,
-          Some(QuootList::Lazy(self.clone())),
-          None,
-        ),
+        LazyState::new(cloned_values, Some(List::Lazy(self.clone())), None),
       )))
     }
   }
-  pub fn as_strict(&self) -> Result<QuootStrictList, QuootEvalError> {
+  pub fn as_strict(&self) -> Result<StrictList, EvalError> {
     self.fully_realize()?;
     Ok(self.state.read().unwrap().realized_values.clone())
   }
 }
 
-pub fn eval(
-  env: &Env,
-  value: &QuootValue,
-) -> Result<QuootValue, QuootEvalError> {
+pub fn eval(env: &Env, value: &Value) -> Result<Value, EvalError> {
   match value {
-    QuootValue::Symbol(name) => env.get(&name).map(|v| v.to_owned()),
-    QuootValue::List(list) => {
+    Value::Symbol(name) => env.get(&name).map(|v| v.to_owned()),
+    Value::List(list) => {
       let values = list.as_strict()?;
       match values.front() {
-        None => Ok(QuootValue::List(QuootList::Strict(QuootStrictList::new()))),
+        None => Ok(Value::List(List::Strict(StrictList::new()))),
         Some(first_value) => {
           let op = eval(env, first_value)?.as_op("eval")?;
           let mut cloned_values = values.clone();
@@ -598,19 +573,19 @@ pub fn eval(
 
 pub fn top_level_eval(
   env: &Env,
-  mut value: &QuootValue,
-) -> Result<(QuootValue, Option<Bindings>), QuootEvalError> {
+  mut value: &Value,
+) -> Result<(Value, Option<Bindings>), EvalError> {
   let mut binding_name: Option<String> = None;
-  if let QuootValue::List(QuootList::Strict(list)) = &value {
-    if let Some(QuootValue::Symbol(name)) = list.get(0) {
+  if let Value::List(List::Strict(list)) = &value {
+    if let Some(Value::Symbol(name)) = list.get(0) {
       if name == "def" {
         if list.len() == 3 {
-          if let Some(QuootValue::Symbol(def_binding_name)) = list.get(1) {
+          if let Some(Value::Symbol(def_binding_name)) = list.get(1) {
             binding_name = Some(def_binding_name.to_string());
             value = list.get(2).unwrap();
           }
         } else {
-          return Err(QuootEvalError::DefineError(format!(
+          return Err(EvalError::DefineError(format!(
             "def: need 2 arguments, got {}",
             list.len() - 1
           )));
@@ -631,9 +606,9 @@ pub fn top_level_eval(
 
 pub fn maybe_eval(
   env: &Env,
-  value: &QuootValue,
+  value: &Value,
   should_eval: bool,
-) -> Result<QuootValue, QuootEvalError> {
+) -> Result<Value, EvalError> {
   if should_eval {
     eval(env, value)
   } else {

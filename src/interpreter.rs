@@ -1,5 +1,5 @@
 use crate::library::default_bindings;
-use crate::model::{top_level_eval, Env, QuootEvalError, QuootValue};
+use crate::model::{top_level_eval, Env, EvalError, Value};
 use crate::parse::parse;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
@@ -19,10 +19,10 @@ pub fn repl() -> Result<()> {
         rl.add_history_entry(line.as_str())?;
         match parse(trimmed_input) {
           Err(parse_error) => {
-            println!("{:?}", QuootEvalError::Parse(parse_error))
+            println!("{:?}", EvalError::Parse(parse_error))
           }
           Ok(form) => {
-            match top_level_eval(&global_env, &QuootValue::from_sexp(&form)) {
+            match top_level_eval(&global_env, &Value::from_sexp(&form)) {
               Err(e) => println!("{:?}", e),
               Ok((value, maybe_bindings)) => {
                 println!("{}", value.to_string());
@@ -54,19 +54,17 @@ pub fn evaluate_program(forms: Vec<String>) -> Result<()> {
     let trimmed_form = forms[i].trim_start().trim_end();
     match parse(trimmed_form) {
       Err(parse_error) => {
-        println!("{:?}", QuootEvalError::Parse(parse_error))
+        println!("{:?}", EvalError::Parse(parse_error))
       }
-      Ok(form) => {
-        match top_level_eval(&global_env, &QuootValue::from_sexp(&form)) {
-          Err(e) => println!("{:?}", e),
-          Ok((value, maybe_bindings)) => {
-            println!("{}", value.to_string());
-            if let Some(bindings) = maybe_bindings {
-              global_env.bind_all(bindings)
-            };
-          }
+      Ok(form) => match top_level_eval(&global_env, &Value::from_sexp(&form)) {
+        Err(e) => println!("{:?}", e),
+        Ok((value, maybe_bindings)) => {
+          println!("{}", value.to_string());
+          if let Some(bindings) = maybe_bindings {
+            global_env.bind_all(bindings)
+          };
         }
-      }
+      },
     }
   }
   Ok(())

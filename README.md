@@ -188,7 +188,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * make get return a char for strings
     * should we have char as it's own type or just treat them as one-character strings?
       * probably as it's own type
-* QuootValue::Hashmap
+* Value::Hashmap
   * hashmap constructor fn
   * implement get, set, count cases
   * functions:
@@ -198,7 +198,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * keys
     * vals
   * make skip work with it, should take an arbitrary number of keys to remove as args
-  * QuootValue::Hashmap.as_op
+  * Value::Hashmap.as_op
   * map? function
   * as_op case
 * add a case to as_op for symbols that treats them like accessors in hashmaps, similar to clojure's keywords, e.g. `('hello {'hello 1})` would work like clojure's `(:hello {:hello 1})`
@@ -260,7 +260,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
         (alligator-dsl '<are scary!>)
         ```
 * top-level unquoting
-* QuootValue::Foreign
+* Value::Foreign
   * represents foreign rust objects
     * basically should just be able to call functions on it with syntax like `(foreign-object.method)` or `(.method foreign-object)`
       * I think we can do without `.-` accessors like clojure has, can just rely on getter/setter methods for everything where that would be needed
@@ -342,7 +342,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * maybe pushf, pushb, fpush, and bpush, respectively?
 
 ### low priority
-* QuootValue::Hashset
+* Value::Hashset
   * set constructor fn
   * implement get, set, count cases
   * functions:
@@ -351,7 +351,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * intersection
     * difference
   * make skip work with it, like with hashmaps
-  * QuootValue::Hashmap.as_op
+  * Value::Hashmap.as_op
   * map? function
   * as_op case
 * try to figure out how to avoid stack-overflows
@@ -362,11 +362,11 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
     * I guess the evaluation model of having the evals interleaved is making this issue worse...
 * think about how to introduce (delimited?) continuations
 * optimization:
-  * `QuootList::as_strict` clones it's argument even when it's a strict list, seems inefficient
+  * `List::as_strict` clones it's argument even when it's a strict list, seems inefficient
     * maybe it should take ownership of the argument? Or return a reference?
-    * same with `QuootValue::as_num`, `as_list`, `as_op`
-  * I feel like `QuootList::get` and `QuootLazyList::get` could probably just return a reference, as `QuootStrictList` naturally does
-  * Can probably use the `QuootStrictList::from(vec![...])` constructor rather than repeated `push_front` or `push_back` calls in several places
+    * same with `Value::as_num`, `as_list`, `as_op`
+  * I feel like `List::get` and `LazyList::get` could probably just return a reference, as `StrictList` naturally does
+  * Can probably use the `StrictList::from(vec![...])` constructor rather than repeated `push_front` or `push_back` calls in several places
   * in quoot_let, I don't think we need to create list_clone, can just call `.get` on the original reference rather than a bunch of `.pop_front`s
   * wherever I'm creating a vector iteratively with `.push_front` or `.push_back`, might be able to just use `Vector::from(vec![])`
   * realize_to is always implemented as repeated calls to realize, but many of the lazy realizer functions could easily be modified to support mutli-element realization in a single call, which would save on overhead
@@ -384,7 +384,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
   * would also be nice to have some syntax for reversing the arguments to a function
     * maybe a preceding `?`
       * I guess this could be implemented with a prefix+macro
-* maybe get rid of Sexp in parser, just use a subset of QuootValue?
+* maybe get rid of Sexp in parser, just use a subset of Value?
 * ParserState can probably be simplified/cleaned up a bit now that it only needs to handle one expression at a time
   * probably don't need to start the expression_stack with an empty vector?
 * use &str in place of &[char] in parser
