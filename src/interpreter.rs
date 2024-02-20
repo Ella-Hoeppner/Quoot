@@ -22,7 +22,7 @@ pub fn repl() -> Result<()> {
             println!("{:?}", EvalError::Parse(parse_error))
           }
           Ok(form) => {
-            match top_level_eval(&global_env, &Value::from_sexp(&form)) {
+            match top_level_eval(&global_env, Value::from_sexp(&form)) {
               Err(e) => println!("{:?}", e),
               Ok((value, maybe_bindings)) => {
                 println!("{}", value.to_string());
@@ -56,7 +56,7 @@ pub fn evaluate_program(forms: Vec<String>) -> Result<()> {
       Err(parse_error) => {
         println!("{:?}", EvalError::Parse(parse_error))
       }
-      Ok(form) => match top_level_eval(&global_env, &Value::from_sexp(&form)) {
+      Ok(form) => match top_level_eval(&global_env, Value::from_sexp(&form)) {
         Err(e) => println!("{:?}", e),
         Ok((value, maybe_bindings)) => {
           println!("{}", value.to_string());

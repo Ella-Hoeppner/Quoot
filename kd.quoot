@@ -123,5 +123,5 @@
 
 ; cljs results: 117ms for construction, 1978ms for search
 ; clj results: 47ms for construction, 432ms for search
-; quoot results: 10380ms for construction, 234530ms for search
+; quoot results: 8,910ms for construction, 172,710ms for search
 ; oh no :(

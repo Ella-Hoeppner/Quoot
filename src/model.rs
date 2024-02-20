@@ -48,20 +48,20 @@ impl Op {
   pub fn apply(
     &self,
     env: &Env,
-    args: &StrictList,
+    mut args: StrictList,
     eval_args: bool,
   ) -> Result<Value, EvalError> {
     match self {
       Op::Core(op) => (op.f)(env, args, eval_args),
       Op::ListAccess(list) => {
         if args.len() == 1 {
-          let index = maybe_eval(env, args.front().unwrap(), eval_args)?
+          let index = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
             .as_num("<List>")?
             .floor();
           match list.get(index)? {
             Some(value) => Ok(value),
             None => Err(EvalError::OutOfBoundsError(
-              "<List application>".to_owned(),
+              "<List application>".to_string(),
               index,
               list.as_strict()?.len() as i64,
             )),
@@ -80,7 +80,7 @@ impl Op {
             if let Some(name) = &op.name {
               format!(" {}", name)
             } else {
-              "".to_owned()
+              "".to_string()
             },
             op.arg_names.len(),
             args.len()
@@ -89,8 +89,10 @@ impl Op {
         let maybe_evaled_args =
           maybe_eval_all(env, args, eval_args && op.evals_args)?;
         let mut body_env = op.env.clone();
-        for i in 0..maybe_evaled_args.len() {
-          body_env.bind(&op.arg_names[i], maybe_evaled_args[i].clone())
+        for (arg_name, arg_value) in
+          op.arg_names.iter().zip(maybe_evaled_args.into_iter())
+        {
+          body_env.bind(arg_name, arg_value);
         }
         if let Some(name) = &op.name {
           body_env.bind(&name, Value::Op(Op::User(op.clone())))
@@ -98,29 +100,29 @@ impl Op {
         let mut body_values = op
           .body
           .iter()
-          .map(|value| eval(&body_env, value))
+          .map(|value| eval(&body_env, value.clone()))
           .collect::<Result<Vec<Value>, EvalError>>()?;
         Ok(body_values.pop().unwrap())
       }
       Op::Composition(ops) => {
         let op = &ops[0];
         let mut value =
-          op.apply(env, &maybe_eval_all(env, args, eval_args)?, false)?;
+          op.apply(env, maybe_eval_all(env, args, eval_args)?, false)?;
         for op in &ops[1..] {
-          value = op.apply(env, &StrictList::unit(value), false)?;
+          value = op.apply(env, StrictList::unit(value), false)?;
         }
         Ok(value)
       }
       Op::Partial(op, prefix_args) => {
         let mut full_args = prefix_args.clone();
-        full_args.append(args.clone());
-        op.apply(env, &full_args, eval_args)
+        full_args.append(args);
+        op.apply(env, full_args, eval_args)
       }
       Op::Applied(op) => {
         if args.len() == 1 {
           op.apply(
             env,
-            &maybe_eval(env, &args[0], eval_args)?
+            maybe_eval(env, args.pop_front().unwrap(), eval_args)?
               .as_list("apply")?
               .as_strict()?,
             eval_args,
@@ -166,11 +168,11 @@ impl UserOp {
 
 #[derive(Clone)]
 pub struct CoreOp {
-  pub f: &'static dyn Fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
+  pub f: &'static dyn Fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
 }
 impl CoreOp {
   pub fn new(
-    f: &'static dyn Fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
+    f: &'static dyn Fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
   ) -> Self {
     Self { f }
   }
@@ -314,7 +316,7 @@ impl Value {
         Err(_) => (),
       },
     }
-    Value::Symbol(token.clone())
+    Value::Symbol(token.to_string())
   }
   pub fn from_sexp(sexp: &Sexp) -> Value {
     match sexp {
@@ -452,16 +454,17 @@ impl Env {
     Env { bindings }
   }
   pub fn bind(&mut self, name: &str, value: Value) {
-    self.bindings.insert(name.to_owned(), value);
+    self.bindings.insert(name.to_string(), value);
   }
   pub fn bind_all(&mut self, bindings: Bindings) {
-    self.bindings = bindings.union(self.bindings.to_owned());
+    self.bindings = bindings.union(std::mem::take(&mut self.bindings));
   }
-  pub fn get(&self, name: &str) -> Result<&Value, EvalError> {
+  pub fn get(&self, name: &str) -> Result<Value, EvalError> {
     self
       .bindings
       .get(name)
-      .ok_or(EvalError::UnboundSymbolError(name.to_owned()))
+      .map(|v| v.clone())
+      .ok_or(EvalError::UnboundSymbolError(name.to_string()))
   }
 }
 
@@ -656,37 +659,42 @@ impl LazyList {
   }
 }
 
-pub fn eval(env: &Env, value: &Value) -> Result<Value, EvalError> {
+pub fn eval(env: &Env, value: Value) -> Result<Value, EvalError> {
   match value {
-    Value::Symbol(name) => env.get(&name).map(|v| v.to_owned()),
+    Value::Symbol(name) => env.get(&name),
     Value::List(list) => {
-      let values = list.as_strict()?;
-      match values.front() {
+      let mut values = list.as_strict()?;
+      match values.pop_front() {
         None => Ok(Value::List(List::Strict(StrictList::new()))),
         Some(first_value) => {
           let op = eval(env, first_value)?.as_op("eval")?;
-          let mut cloned_values = values.clone();
-          cloned_values.pop_front();
-          op.apply(env, &cloned_values, true)
+          op.apply(env, values, true)
         }
       }
     }
-    other => Ok(other.to_owned()),
+    other => Ok(other),
   }
 }
 
 pub fn top_level_eval(
   env: &Env,
-  mut value: &Value,
+  mut value: Value,
 ) -> Result<(Value, Option<Bindings>), EvalError> {
   let mut binding_name: Option<String> = None;
   if let Value::List(List::Strict(list)) = &value {
     if let Some(Value::Symbol(name)) = list.get(0) {
       if name == "def" {
         if list.len() == 3 {
-          if let Some(Value::Symbol(def_binding_name)) = list.get(1) {
+          let mut value_iter = list.clone().into_iter().skip(1);
+          let binding_name_value: Value = value_iter.next().unwrap();
+          if let Value::Symbol(def_binding_name) = binding_name_value {
             binding_name = Some(def_binding_name.to_string());
-            value = list.get(2).unwrap();
+            value = value_iter.next().unwrap();
+          } else {
+            return Err(EvalError::DefineError(format!(
+              "def: second argument must be a symbol, got {}",
+              binding_name_value.type_string()
+            )));
           }
         } else {
           return Err(EvalError::DefineError(format!(
@@ -698,43 +706,39 @@ pub fn top_level_eval(
     }
   }
   let evaled_value = eval(env, value)?;
-  Ok((
-    evaled_value.clone(),
-    binding_name.map(|name| {
-      let mut bindings = Bindings::new();
-      bindings.insert(name, evaled_value);
-      bindings
-    }),
-  ))
+  let binding = binding_name.map(|name| {
+    let mut bindings = Bindings::new();
+    bindings.insert(name, evaled_value.clone());
+    bindings
+  });
+  Ok((evaled_value, binding))
 }
 
 pub fn maybe_eval(
   env: &Env,
-  value: &Value,
+  value: Value,
   should_eval: bool,
 ) -> Result<Value, EvalError> {
   if should_eval {
     eval(env, value)
   } else {
-    Ok(value.to_owned())
+    Ok(value)
   }
 }
 
 pub fn maybe_eval_all(
   env: &Env,
-  values: &StrictList,
+  values: StrictList,
   eval_args: bool,
 ) -> Result<StrictList, EvalError> {
   if eval_args {
     Ok(StrictList::from(
       values
-        .iter()
-        .map(|value| eval(env, value))
-        .collect::<Vec<Result<Value, EvalError>>>()
         .into_iter()
+        .map(|value| eval(env, value))
         .collect::<Result<Vec<Value>, EvalError>>()?,
     ))
   } else {
-    Ok(values.clone())
+    Ok(values)
   }
 }

@@ -72,7 +72,7 @@ fn value_max(
 
 pub fn quoot_let(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() < 2 {
@@ -81,20 +81,18 @@ pub fn quoot_let(
       args.len()
     )));
   }
-  let mut args_iter = args.iter();
+  let mut args_iter = args.into_iter();
   match args_iter.next().unwrap() {
     Value::List(List::Strict(list)) => {
-      let mut list_clone = List::deliteralize(list.clone());
-      if list_clone.len() % 2 == 0 {
+      let binding_list = List::deliteralize(list);
+      if binding_list.len() % 2 == 0 {
+        let mut binding_iter = binding_list.into_iter();
         let mut let_env = env.clone();
-        while let Some(binding_name) = list_clone.pop_front() {
+        while let Some(binding_name) = binding_iter.next() {
           match binding_name {
             Value::Symbol(name) => {
-              let binding_value = maybe_eval(
-                &let_env,
-                &list_clone.pop_front().unwrap(),
-                eval_args,
-              )?;
+              let binding_value =
+                maybe_eval(&let_env, binding_iter.next().unwrap(), eval_args)?;
               let_env.bind(&name, binding_value);
             }
             other => {
@@ -106,9 +104,7 @@ pub fn quoot_let(
           }
         }
         Ok(
-          args
-            .iter()
-            .skip(1)
+          args_iter
             .map(|value| maybe_eval(&let_env, value, eval_args))
             .collect::<Result<Vec<Value>, EvalError>>()?
             .pop()
@@ -129,11 +125,11 @@ pub fn quoot_let(
 
 pub fn quoot_eval(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    1 => eval(env, &maybe_eval(env, args.front().unwrap(), eval_args)?),
+    1 => eval(env, maybe_eval(env, args.pop_front().unwrap(), eval_args)?),
     2 => todo!(),
     _ => Err(EvalError::OpError(format!(
       "eval: need 1 or 2 arguments, got {}",
@@ -144,11 +140,11 @@ pub fn quoot_eval(
 
 pub fn quoot_quote(
   _env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    1 => Ok(args.front().unwrap().to_owned()),
+    1 => Ok(args.pop_front().unwrap()),
     _ => Err(EvalError::OpError(format!(
       "quote: need 1 argument, got {}",
       args.len()
@@ -161,9 +157,9 @@ pub fn parse_args_names(
   error_prefix: &str,
 ) -> Result<Vec<String>, EvalError> {
   List::deliteralize(names.as_strict()?)
-    .iter()
+    .into_iter()
     .map(|value| match value {
-      Value::Symbol(symbol) => Ok(symbol.to_owned()),
+      Value::Symbol(name) => Ok(name),
       other => Err(EvalError::OpError(format!(
         "{}: arg list must contain symbols, got {}",
         error_prefix, other
@@ -174,7 +170,7 @@ pub fn parse_args_names(
 
 pub fn quoot_op(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() < 2 {
@@ -183,13 +179,12 @@ pub fn quoot_op(
       args.len()
     )));
   }
-  let mut args_copy = args.clone();
   let (op_name, arg_names): (Option<String>, Vec<String>) = {
-    let first_arg = args_copy.pop_front().unwrap();
+    let first_arg = args.pop_front().unwrap();
     match first_arg {
       Value::Symbol(name) => (
         Some(name),
-        parse_args_names(args_copy.pop_front().unwrap().as_list("fn")?, "fn")?,
+        parse_args_names(args.pop_front().unwrap().as_list("fn")?, "fn")?,
       ),
       Value::List(list) => (None, parse_args_names(list, "fn")?),
       other => {
@@ -204,14 +199,14 @@ pub fn quoot_op(
     op_name,
     env.clone(),
     arg_names,
-    args_copy,
+    args,
     false,
   ))))
 }
 
 pub fn quoot_fn(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() < 2 {
@@ -220,13 +215,12 @@ pub fn quoot_fn(
       args.len()
     )));
   }
-  let mut args_copy = args.clone();
   let (fn_name, arg_names): (Option<String>, Vec<String>) = {
-    let first_arg = args_copy.pop_front().unwrap();
+    let first_arg = args.pop_front().unwrap();
     match first_arg {
       Value::Symbol(name) => (
         Some(name),
-        parse_args_names(args_copy.pop_front().unwrap().as_list("fn")?, "fn")?,
+        parse_args_names(args.pop_front().unwrap().as_list("fn")?, "fn")?,
       ),
       Value::List(list) => (None, parse_args_names(list, "fn")?),
       other => {
@@ -241,19 +235,21 @@ pub fn quoot_fn(
     fn_name,
     env.clone(),
     arg_names,
-    args_copy,
+    args,
     true,
   ))))
 }
 
 pub fn quoot_inc(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 1 {
     Ok(Value::Num(
-      match maybe_eval(env, args.front().unwrap(), eval_args)?.as_num("inc")? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)?
+        .as_num("inc")?
+      {
         Num::Int(i) => Num::Int(i + 1),
         Num::Float(f) => Num::Float(f + 1.0),
       },
@@ -268,12 +264,14 @@ pub fn quoot_inc(
 
 pub fn quoot_dec(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 1 {
     Ok(Value::Num(
-      match maybe_eval(env, args.front().unwrap(), eval_args)?.as_num("inc")? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)?
+        .as_num("inc")?
+      {
         Num::Int(i) => Num::Int(i - 1),
         Num::Float(f) => Num::Float(f - 1.0),
       },
@@ -288,7 +286,7 @@ pub fn quoot_dec(
 
 pub fn quoot_add(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::Num(value_sum(
@@ -299,7 +297,7 @@ pub fn quoot_add(
 
 pub fn quoot_multiply(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::Num(value_product(
@@ -310,17 +308,16 @@ pub fn quoot_multiply(
 
 pub fn quoot_subtract(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
-  let mut args_clone = args.clone();
-  match args_clone.pop_front() {
+  match args.pop_front() {
     None => Err(EvalError::OpError(
-      "-: need at least one argument".to_owned(),
+      "-: need at least one argument".to_string(),
     )),
     Some(value) => {
-      let first_num = maybe_eval(env, &value, eval_args)?.as_num("-")?;
-      Ok(Value::Num(if args_clone.is_empty() {
+      let first_num = maybe_eval(env, value, eval_args)?.as_num("-")?;
+      Ok(Value::Num(if args.is_empty() {
         match first_num {
           Num::Int(i) => Num::Int(-i),
           Num::Float(f) => Num::Float(-f),
@@ -328,7 +325,7 @@ pub fn quoot_subtract(
       } else {
         match (
           first_num,
-          value_sum(maybe_eval_all(env, &args_clone, eval_args)?, "-")?,
+          value_sum(maybe_eval_all(env, args, eval_args)?, "-")?,
         ) {
           (Num::Int(a), Num::Int(b)) => Num::Int(a - b),
           (Num::Float(a), Num::Float(b)) => Num::Float(a - b),
@@ -342,20 +339,21 @@ pub fn quoot_subtract(
 
 pub fn quoot_divide(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
-  let mut args_clone = args.clone();
-  match args_clone.pop_front() {
-    None => Err(EvalError::OpError("/: need at least 1 argument".to_owned())),
+  match args.pop_front() {
+    None => Err(EvalError::OpError(
+      "/: need at least 1 argument".to_string(),
+    )),
     Some(value) => {
-      let first_num = maybe_eval(env, &value, eval_args)?.as_num("/")?;
-      Ok(Value::Num(if args_clone.is_empty() {
+      let first_num = maybe_eval(env, value, eval_args)?.as_num("/")?;
+      Ok(Value::Num(if args.is_empty() {
         Num::Float(1.0 / first_num.as_float())
       } else {
         Num::Float(
           first_num.as_float()
-            / value_product(maybe_eval_all(env, &args_clone, eval_args)?, "/")?
+            / value_product(maybe_eval_all(env, args, eval_args)?, "/")?
               .as_float(),
         )
       }))
@@ -365,12 +363,12 @@ pub fn quoot_divide(
 
 pub fn quoot_min(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     0 => Err(EvalError::OpError(
-      "min: need at least 1 argument".to_owned(),
+      "min: need at least 1 argument".to_string(),
     )),
     _ => Ok(Value::Num(value_min(
       maybe_eval_all(env, args, eval_args)?,
@@ -381,12 +379,12 @@ pub fn quoot_min(
 
 pub fn quoot_max(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     0 => Err(EvalError::OpError(
-      "max: need at least 1 argument".to_owned(),
+      "max: need at least 1 argument".to_string(),
     )),
     _ => Ok(Value::Num(value_max(
       maybe_eval_all(env, args, eval_args)?,
@@ -397,14 +395,15 @@ pub fn quoot_max(
 
 pub fn quoot_modulo(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
+    let mut args_iter = args.into_iter();
     let dividend =
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_num("mod")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num("mod")?;
     let divisor =
-      maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num("mod")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num("mod")?;
     Ok(Value::Num(match (dividend, divisor) {
       (Num::Int(a), Num::Int(b)) => Num::Int(a % b),
       (Num::Float(a), Num::Float(b)) => Num::Float(a % b),
@@ -421,14 +420,15 @@ pub fn quoot_modulo(
 
 pub fn quoot_quotient(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
+    let mut args_iter = args.into_iter();
     let dividend =
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_num("quot")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num("mod")?;
     let divisor =
-      maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num("quot")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num("mod")?;
     Ok(Value::Num(match (dividend, divisor) {
       (Num::Int(a), Num::Int(b)) => Num::Int(a / b),
       (Num::Float(a), Num::Float(b)) => Num::Int((a / b) as i64),
@@ -445,7 +445,7 @@ pub fn quoot_quotient(
 
 pub fn quoot_equal(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::Bool(match args.len() {
@@ -465,7 +465,7 @@ pub fn quoot_equal(
 
 pub fn quoot_numerical_equal(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::Bool(match args.len() {
@@ -485,7 +485,7 @@ pub fn quoot_numerical_equal(
 
 pub fn quoot_list_constructor(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::from(maybe_eval_all(env, args, eval_args)?))
@@ -493,11 +493,11 @@ pub fn quoot_list_constructor(
 
 pub fn quoot_count(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 1 {
-    match maybe_eval(env, args.front().unwrap(), eval_args)? {
+    match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
       Value::Nil => Ok(Value::from(0i64)),
       Value::List(List::Strict(list)) => Ok(Value::from(list.len())),
       Value::List(List::Lazy(list)) => {
@@ -518,23 +518,23 @@ pub fn quoot_count(
 
 pub fn quoot_cons(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::from(StrictList::unit(maybe_eval(
       env,
-      args.front().unwrap(),
+      args.pop_front().unwrap(),
       eval_args,
     )?))),
     2 => {
-      let first_arg = maybe_eval(env, args.front().unwrap(), eval_args)?;
-      let second_arg = maybe_eval(env, args.get(1).unwrap(), eval_args)?;
+      let mut args_iter = args.into_iter();
+      let first_arg = maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
+      let second_arg = maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
       match second_arg {
-        Value::List(List::Strict(strict_list)) => {
-          let mut list_clone = strict_list.clone();
-          list_clone.push_front(first_arg);
-          Ok(Value::from(list_clone))
+        Value::List(List::Strict(mut strict_list)) => {
+          strict_list.push_front(first_arg);
+          Ok(Value::from(strict_list))
         }
         Value::List(List::Lazy(lazy_list)) => Ok(Value::from(LazyList::new(
           &|lazy_state| {
@@ -583,7 +583,7 @@ pub fn quoot_cons(
 
 pub fn quoot_concat(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 0 {
@@ -665,20 +665,21 @@ pub fn quoot_concat(
 
 pub fn quoot_get(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
-    match maybe_eval(env, args.front().unwrap(), eval_args)? {
+    let mut args_iter = args.into_iter();
+    match maybe_eval(env, args_iter.next().unwrap(), eval_args)? {
       Value::Nil => Ok(Value::Nil),
       Value::List(list) => {
-        let index = maybe_eval(env, args.get(1).unwrap(), eval_args)?
+        let index = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
           .as_num("get")?
           .floor();
         match list.get(index)? {
           Some(value) => Ok(value),
           None => Err(EvalError::OutOfBoundsError(
-            "get".to_owned(),
+            "get".to_string(),
             index,
             list.as_strict()?.len() as i64,
           )),
@@ -699,26 +700,29 @@ pub fn quoot_get(
 
 pub fn quoot_update(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 3 {
-    let list = maybe_eval(env, &args[0], eval_args)?.as_list("update")?;
-    let index = maybe_eval(env, &args[1], eval_args)?
+    let mut args_iter = args.into_iter();
+    let list = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+      .as_list("update")?;
+    let index = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
       .as_num("update")?
       .floor() as usize;
-    let op = maybe_eval(env, &args[2], eval_args)?.as_op("update")?;
+    let op =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_op("update")?;
     match list {
       List::Strict(strict_list) => {
         if index >= strict_list.len() {
           return Err(EvalError::OutOfBoundsError(
-            "update".to_owned(),
+            "update".to_string(),
             index as i64,
             strict_list.len() as i64,
           ));
         }
         let updated_value =
-          op.apply(env, &StrictList::unit(strict_list[index].clone()), false)?;
+          op.apply(env, StrictList::unit(strict_list[index].clone()), false)?;
         let mut list_clone = strict_list.clone();
         list_clone.set(index, updated_value);
         Ok(Value::from(list_clone))
@@ -727,19 +731,19 @@ pub fn quoot_update(
         lazy_list.realize_to(index + 1)?;
         if index >= lazy_list.realized_len() {
           return Err(EvalError::OutOfBoundsError(
-            "update".to_owned(),
+            "update".to_string(),
             index as i64,
             lazy_list.realized_len() as i64,
           ));
         }
-        let lazy_state = lazy_list.state.read().unwrap();
+        let lazy_state_clone = lazy_list.state.read().unwrap().clone();
         let updated_value = op.apply(
           env,
-          &StrictList::unit(lazy_state.realized_values[index].clone()),
+          StrictList::unit(lazy_state_clone.realized_values[index].clone()),
           false,
         )?;
-        let mut realized_clone = lazy_state.realized_values.clone();
-        realized_clone.set(index, updated_value);
+        let mut realized_values_clone = lazy_state_clone.realized_values;
+        realized_values_clone.set(index, updated_value);
         Ok(Value::from(LazyList::new(
           &|lazy_state| {
             let original_list = lazy_state.builder_values.as_ref().unwrap();
@@ -751,9 +755,9 @@ pub fn quoot_update(
             Ok(())
           },
           LazyState::new(
-            realized_clone,
-            Some(List::Lazy(lazy_list.to_owned())),
-            lazy_state.captured_environment.to_owned(),
+            realized_values_clone,
+            Some(List::Lazy(lazy_list)),
+            lazy_state_clone.captured_environment,
           ),
         )))
       }
@@ -768,17 +772,20 @@ pub fn quoot_update(
 
 pub fn quoot_take(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
+    let mut args_iter = args.into_iter();
     let n = 0.max(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("take")?
         .floor(),
     ) as usize;
     Ok(Value::List(
-      match maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("take")? {
+      match maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+        .as_list("take")?
+      {
         List::Strict(strict_list) => List::Strict(if n >= strict_list.len() {
           strict_list
         } else {
@@ -834,17 +841,20 @@ pub fn quoot_take(
 
 pub fn quoot_drop(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
+    let mut args_iter = args.into_iter();
     let n = 0.max(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("take")?
         .floor(),
     ) as usize;
     Ok(Value::List(
-      match maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("drop")? {
+      match maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+        .as_list("drop")?
+      {
         List::Strict(strict_list) => {
           List::Strict(strict_list.skip(0.max(n) as usize))
         }
@@ -895,12 +905,12 @@ pub fn quoot_drop(
 
 pub fn quoot_strict(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::from(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_list("strict")?
         .as_strict()?,
     )),
@@ -913,7 +923,7 @@ pub fn quoot_strict(
 
 pub fn quoot_range(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
@@ -927,7 +937,7 @@ pub fn quoot_range(
       LazyState::new(StrictList::new(), None, None),
     ))),
     1 => {
-      let end = maybe_eval(env, args.front().unwrap(), eval_args)?
+      let end = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_num("range")?
         .floor();
       Ok(Value::from(
@@ -935,10 +945,11 @@ pub fn quoot_range(
       ))
     }
     2 => {
-      let start = maybe_eval(env, args.front().unwrap(), eval_args)?
+      let mut args_iter = args.into_iter();
+      let start = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("range")?
         .floor();
-      let end = maybe_eval(env, args.get(1).unwrap(), eval_args)?
+      let end = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("range")?
         .floor();
       Ok(Value::from(
@@ -954,7 +965,7 @@ pub fn quoot_range(
 
 pub fn quoot_apply(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
@@ -962,21 +973,24 @@ pub fn quoot_apply(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
     1 => Ok(Value::Op(Op::Applied(Rc::from(
-      maybe_eval(env, &args[0], eval_args)?.as_op("apply")?,
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?.as_op("apply")?,
     )))),
-    2 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
-      Value::Op(op) => op.apply(
-        env,
-        &maybe_eval(env, args.get(1).unwrap(), eval_args)?
-          .as_list("apply")?
-          .as_strict()?,
-        eval_args,
-      ),
-      other => Err(EvalError::OpError(format!(
-        "apply: cannot invoke type <{}>",
-        other.type_string()
-      ))),
-    },
+    2 => {
+      let mut args_iter = args.into_iter();
+      match maybe_eval(env, args_iter.next().unwrap(), eval_args)? {
+        Value::Op(op) => op.apply(
+          env,
+          maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+            .as_list("apply")?
+            .as_strict()?,
+          eval_args,
+        ),
+        other => Err(EvalError::OpError(format!(
+          "apply: cannot invoke type <{}>",
+          other.type_string()
+        ))),
+      }
+    }
     n => Err(EvalError::OpError(format!(
       "apply: need 1 or 2 arguments, got {}",
       n
@@ -986,11 +1000,11 @@ pub fn quoot_apply(
 
 pub fn quoot_identity(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 1 {
-    Ok(maybe_eval(env, &args.front().unwrap(), eval_args)?)
+    Ok(maybe_eval(env, args.pop_front().unwrap(), eval_args)?)
   } else {
     Err(EvalError::OpError(format!(
       "identity: need 1 argument, got {}",
@@ -1001,7 +1015,7 @@ pub fn quoot_identity(
 
 pub fn quoot_compose(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
@@ -1009,11 +1023,12 @@ pub fn quoot_compose(
       "compose: need at least 1 argument, got 0"
     ))),
     1 => Ok(Value::Op(
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("compose")?,
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
+        .as_op("compose")?,
     )),
     _ => {
       let ops = args
-        .iter()
+        .into_iter()
         .rev()
         .map(|arg| maybe_eval(env, arg, eval_args)?.as_op("compose"))
         .collect::<Vec<Result<Op, EvalError>>>()
@@ -1026,15 +1041,16 @@ pub fn quoot_compose(
 
 pub fn quoot_partial(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     0 => Err(EvalError::OpError(
-      "partial: need at least 1 argument, got 0".to_owned(),
+      "partial: need at least 1 argument, got 0".to_string(),
     )),
     1 => Ok(Value::Op(
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("partial")?,
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
+        .as_op("partial")?,
     )),
     _ => {
       let mut values = maybe_eval_all(env, args, eval_args)?;
@@ -1046,12 +1062,12 @@ pub fn quoot_partial(
 
 pub fn quoot_is_nil(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Nil => true,
         _ => false,
       },
@@ -1065,12 +1081,12 @@ pub fn quoot_is_nil(
 
 pub fn quoot_is_bool(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Bool(_) => true,
         _ => false,
       },
@@ -1084,12 +1100,12 @@ pub fn quoot_is_bool(
 
 pub fn quoot_is_list(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::List(_) => true,
         _ => false,
       },
@@ -1103,12 +1119,12 @@ pub fn quoot_is_list(
 
 pub fn quoot_is_num(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(_) => true,
         _ => false,
       },
@@ -1122,12 +1138,12 @@ pub fn quoot_is_num(
 
 pub fn quoot_is_nan(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(Num::Float(f)) => f.is_nan(),
         _ => false,
       },
@@ -1141,12 +1157,12 @@ pub fn quoot_is_nan(
 
 pub fn quoot_is_inf(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(Num::Float(f)) => f.is_infinite(),
         _ => false,
       },
@@ -1160,12 +1176,12 @@ pub fn quoot_is_inf(
 
 pub fn quoot_is_zero(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(num) => match num {
           Num::Int(i) => i == 0,
           Num::Float(f) => f == 0.,
@@ -1182,12 +1198,12 @@ pub fn quoot_is_zero(
 
 pub fn quoot_is_neg(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(num) => match num {
           Num::Int(i) => i < 0,
           Num::Float(f) => f < 0.,
@@ -1204,12 +1220,12 @@ pub fn quoot_is_neg(
 
 pub fn quoot_is_pos(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Num(num) => match num {
           Num::Int(i) => i > 0,
           Num::Float(f) => f > 0.,
@@ -1226,12 +1242,12 @@ pub fn quoot_is_pos(
 
 pub fn quoot_is_string(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::String(_) => true,
         _ => false,
       },
@@ -1245,12 +1261,12 @@ pub fn quoot_is_string(
 
 pub fn quoot_is_symbol(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Symbol(_) => true,
         _ => false,
       },
@@ -1264,12 +1280,12 @@ pub fn quoot_is_symbol(
 
 pub fn quoot_is_op(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Op(_) => true,
         _ => false,
       },
@@ -1283,12 +1299,12 @@ pub fn quoot_is_op(
 
 pub fn quoot_is_empty(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
         Value::Nil => true,
         Value::List(list) => list.is_empty()?,
         other => {
@@ -1308,12 +1324,12 @@ pub fn quoot_is_empty(
 
 pub fn quoot_is_even(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      match maybe_eval(env, args.front().unwrap(), eval_args)?
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_num("even?")?
       {
         Num::Int(i) => i % 2 == 0,
@@ -1329,18 +1345,15 @@ pub fn quoot_is_even(
 
 pub fn quoot_first(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    1 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
+    1 => match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
       Value::Nil => Ok(Value::Nil),
-      Value::List(List::Strict(list)) => Ok({
-        match list.front() {
-          None => Value::Nil,
-          Some(value) => value.to_owned(),
-        }
-      }),
+      Value::List(List::Strict(list)) => {
+        Ok(list.front().map(Value::clone).unwrap_or(Value::Nil))
+      }
       Value::List(List::Lazy(list)) => Ok({
         list.realize_to(1)?;
         match list.get(0)? {
@@ -1364,22 +1377,18 @@ pub fn quoot_first(
 
 pub fn quoot_last(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
-    1 => match maybe_eval(env, args.front().unwrap(), eval_args)? {
+    1 => match maybe_eval(env, args.pop_front().unwrap(), eval_args)? {
       Value::Nil => Ok(Value::Nil),
-      Value::List(List::Strict(list)) => Ok(match list.last() {
-        None => Value::Nil,
-        Some(value) => value.to_owned(),
-      }),
+      Value::List(List::Strict(list)) => {
+        Ok(list.last().map(Value::clone).unwrap_or(Value::Nil))
+      }
       Value::List(List::Lazy(list)) => Ok({
         list.fully_realize()?;
-        match list.get(list.realized_len() - 1)? {
-          None => Value::Nil,
-          Some(value) => value.to_owned(),
-        }
+        list.get(list.realized_len() - 1)?.unwrap_or(Value::Nil)
       }),
       other => {
         return Err(EvalError::OpError(format!(
@@ -1397,12 +1406,12 @@ pub fn quoot_last(
 
 pub fn quoot_rest(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::List(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_list("rest")?
         .rest()?,
     )),
@@ -1415,12 +1424,12 @@ pub fn quoot_rest(
 
 pub fn quoot_reverse(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => {
-      let mut list = maybe_eval(env, args.front().unwrap(), eval_args)?
+      let mut list = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_list("reverse")?
         .as_strict()?;
       let mut new_list = StrictList::new();
@@ -1438,12 +1447,12 @@ pub fn quoot_reverse(
 
 pub fn quoot_bool(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool(),
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?.as_bool(),
     )),
     n => Err(EvalError::OpError(format!(
       "bool: need 1 argument, got {}",
@@ -1454,12 +1463,12 @@ pub fn quoot_bool(
 
 pub fn quoot_not(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Bool(
-      !maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool(),
+      !maybe_eval(env, args.pop_front().unwrap(), eval_args)?.as_bool(),
     )),
     n => Err(EvalError::OpError(format!(
       "bool: need 1 argument, got {}",
@@ -1470,50 +1479,60 @@ pub fn quoot_not(
 
 pub fn quoot_and(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     0 => Ok(Value::Bool(true)),
-    n => {
-      for i in 0..n - 1 {
-        let value = maybe_eval(env, &args[i], eval_args)?;
+    _ => {
+      let mut args_iter = args.into_iter();
+      let mut value: Value =
+        maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
+      loop {
         if !value.as_bool() {
           return Ok(value);
         }
+        match args_iter.next() {
+          Some(arg) => value = maybe_eval(env, arg, eval_args)?,
+          None => return Ok(value),
+        }
       }
-      maybe_eval(env, &args[n - 1], eval_args)
     }
   }
 }
 
 pub fn quoot_or(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     0 => Ok(Value::Bool(true)),
-    n => {
-      for i in 0..n - 1 {
-        let value = maybe_eval(env, &args[i], eval_args)?;
+    _ => {
+      let mut args_iter = args.into_iter();
+      let mut value: Value =
+        maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
+      loop {
         if value.as_bool() {
           return Ok(value);
         }
+        match args_iter.next() {
+          Some(arg) => value = maybe_eval(env, arg, eval_args)?,
+          None => return Ok(Value::Bool(false)),
+        }
       }
-      maybe_eval(env, &args[n - 1], eval_args)
     }
   }
 }
 
 pub fn quoot_int(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::from(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_num("int")?
         .floor(),
     )),
@@ -1526,12 +1545,14 @@ pub fn quoot_int(
 
 pub fn quoot_abs(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Num(
-      match maybe_eval(env, args.front().unwrap(), eval_args)?.as_num("abs")? {
+      match maybe_eval(env, args.pop_front().unwrap(), eval_args)?
+        .as_num("abs")?
+      {
         Num::Int(i) => Num::Int(i.abs()),
         Num::Float(f) => Num::Float(f.abs()),
       },
@@ -1545,12 +1566,12 @@ pub fn quoot_abs(
 
 pub fn quoot_sqrt(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => Ok(Value::Num(Num::Float(
-      maybe_eval(env, args.front().unwrap(), eval_args)?
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_num("sqrt")?
         .as_float()
         .sqrt(),
@@ -1564,14 +1585,15 @@ pub fn quoot_sqrt(
 
 pub fn quoot_filter(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
+    let mut args_iter = args.into_iter();
     let predicate =
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_op("filter")?;
-    let list =
-      maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_list("filter")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_op("filter")?;
+    let list = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+      .as_list("filter")?;
     let mut initial_builder_values = StrictList::new();
     initial_builder_values.push_back(Value::from(0i64));
     initial_builder_values.push_back(Value::List(list));
@@ -1588,7 +1610,7 @@ pub fn quoot_filter(
           if predicate
             .apply(
               &state.captured_environment.as_ref().unwrap(),
-              &StrictList::unit(value.clone()),
+              StrictList::unit(value.clone()),
               false,
             )?
             .as_bool()
@@ -1622,14 +1644,16 @@ pub fn quoot_filter(
 
 pub fn quoot_map(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() > 1 {
-    let mut map_values = vec![maybe_eval(env, &args[0], eval_args)?];
-    for i in 1..args.len() {
+    let mut args_iter = args.into_iter();
+    let mut map_values =
+      vec![maybe_eval(env, args_iter.next().unwrap(), eval_args)?];
+    while let Some(arg) = args_iter.next() {
       map_values.push(Value::List(
-        maybe_eval(env, &args[i], eval_args)?.as_list("map")?,
+        maybe_eval(env, arg, eval_args)?.as_list("map")?,
       ));
     }
     Ok(Value::from(LazyList::new(
@@ -1653,7 +1677,7 @@ pub fn quoot_map(
         if !state.is_finished {
           state.realized_values.push_back(op.apply(
             &state.captured_environment.as_ref().unwrap(),
-            &StrictList::from(op_args),
+            StrictList::from(op_args),
             false,
           )?);
         }
@@ -1675,12 +1699,15 @@ pub fn quoot_map(
 
 pub fn quoot_greater(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
-    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
-    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    let mut args_iter = args.into_iter();
+    let a =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
+    let b =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a > b))
   } else {
     Err(EvalError::OpError(format!(
@@ -1692,12 +1719,15 @@ pub fn quoot_greater(
 
 pub fn quoot_greater_or_equal(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
-    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
-    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    let mut args_iter = args.into_iter();
+    let a =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
+    let b =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a >= b))
   } else {
     Err(EvalError::OpError(format!(
@@ -1709,12 +1739,15 @@ pub fn quoot_greater_or_equal(
 
 pub fn quoot_less(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
-    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
-    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    let mut args_iter = args.into_iter();
+    let a =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
+    let b =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a < b))
   } else {
     Err(EvalError::OpError(format!(
@@ -1726,12 +1759,15 @@ pub fn quoot_less(
 
 pub fn quoot_less_or_equal(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 2 {
-    let a = maybe_eval(env, args.front().unwrap(), eval_args)?.as_num(">")?;
-    let b = maybe_eval(env, args.get(1).unwrap(), eval_args)?.as_num(">")?;
+    let mut args_iter = args.into_iter();
+    let a =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
+    let b =
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_num(">")?;
     Ok(Value::Bool(a <= b))
   } else {
     Err(EvalError::OpError(format!(
@@ -1743,17 +1779,15 @@ pub fn quoot_less_or_equal(
 
 pub fn quoot_if(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   if args.len() == 3 {
-    let condition =
-      maybe_eval(env, args.front().unwrap(), eval_args)?.as_bool();
-    Ok(maybe_eval(
-      env,
-      args.get(if condition { 1 } else { 2 }).unwrap(),
-      eval_args,
-    )?)
+    let mut args_iter = args.into_iter();
+    if !maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_bool() {
+      args_iter.next();
+    }
+    Ok(maybe_eval(env, args_iter.next().unwrap(), eval_args)?)
   } else {
     Err(EvalError::OpError(format!(
       "if: need 3 arguments, got {}",
@@ -1764,7 +1798,7 @@ pub fn quoot_if(
 
 pub fn quoot_rand(
   _env: &Env,
-  _args: &StrictList,
+  _args: StrictList,
   _eval_args: bool,
 ) -> Result<Value, EvalError> {
   Ok(Value::Num(Num::Float(rand::random::<f64>())))
@@ -1772,35 +1806,35 @@ pub fn quoot_rand(
 
 pub fn quoot_repeat(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => {
-      let value = maybe_eval(env, args.front().unwrap(), eval_args)?;
+      let value = maybe_eval(env, args.pop_front().unwrap(), eval_args)?;
       Ok(Value::from(LazyList::new(
         &|lazy_state| {
-          let value =
-            lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
-              .to_owned();
-          lazy_state.realized_values.push_back(value);
+          lazy_state.realized_values.push_back(
+            lazy_state.builder_values.as_ref().unwrap().as_strict()?[0].clone(),
+          );
           Ok(())
         },
         LazyState::new(
           StrictList::new(),
           Some(List::Strict(StrictList::unit(value))),
-          Some(env.to_owned()),
+          Some(env.clone()),
         ),
       )))
     }
     2 => {
-      let value = maybe_eval(env, &args[0], eval_args)?;
-      let count = maybe_eval(env, &args[1], eval_args)?
+      let mut args_iter = args.into_iter();
+      let value = maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
+      let count = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("repeat")?
         .floor();
       let mut values: Vec<Value> = vec![];
       for _ in 0..count {
-        values.push(value.to_owned());
+        values.push(value.clone());
       }
       Ok(Value::from(StrictList::from(values)))
     }
@@ -1813,12 +1847,12 @@ pub fn quoot_repeat(
 
 pub fn quoot_repeatedly(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => {
-      let generator_op = maybe_eval(env, args.front().unwrap(), eval_args)?
+      let generator_op = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_op("repeatedly")?;
       Ok(Value::from(LazyList::new(
         &|lazy_state| {
@@ -1827,7 +1861,7 @@ pub fn quoot_repeatedly(
               .as_op("repeatedly")?;
           let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
-            &StrictList::new(),
+            StrictList::new(),
             false,
           )?;
           lazy_state.realized_values.push_back(value);
@@ -1836,19 +1870,20 @@ pub fn quoot_repeatedly(
         LazyState::new(
           StrictList::new(),
           Some(List::Strict(StrictList::unit(Value::Op(generator_op)))),
-          Some(env.to_owned()),
+          Some(env.clone()),
         ),
       )))
     }
     2 => {
-      let generator_op =
-        maybe_eval(env, &args[0], eval_args)?.as_op("repeatedly")?;
-      let count = maybe_eval(env, &args[1], eval_args)?
+      let mut args_iter = args.into_iter();
+      let generator_op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+        .as_op("repeatedly")?;
+      let count = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("repeatedly")?
         .floor();
       let mut values: Vec<Value> = vec![];
       for _ in 0..count {
-        values.push(generator_op.apply(&env, &StrictList::new(), false)?)
+        values.push(generator_op.apply(&env, StrictList::new(), false)?)
       }
       Ok(Value::from(StrictList::from(values)))
     }
@@ -1861,13 +1896,16 @@ pub fn quoot_repeatedly(
 
 pub fn quoot_iterate(
   env: &Env,
-  args: &StrictList,
+  args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     2 => {
-      let op = maybe_eval(env, &args[0], eval_args)?.as_op("iterate")?;
-      let initial_value = maybe_eval(env, &args[1], eval_args)?;
+      let mut args_iter = args.into_iter();
+      let op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+        .as_op("iterate")?;
+      let initial_value =
+        maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
       Ok(Value::from(LazyList::new(
         &|lazy_state| {
           let generator_op =
@@ -1875,8 +1913,8 @@ pub fn quoot_iterate(
               .as_op("iterate")?;
           let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
-            &StrictList::unit(
-              lazy_state.realized_values.last().unwrap().to_owned(),
+            StrictList::unit(
+              lazy_state.realized_values.last().unwrap().clone(),
             ),
             false,
           )?;
@@ -1886,18 +1924,20 @@ pub fn quoot_iterate(
         LazyState::new(
           StrictList::unit(initial_value),
           Some(List::Strict(StrictList::unit(Value::Op(op)))),
-          Some(env.to_owned()),
+          Some(env.clone()),
         ),
       )))
     }
     3 => {
-      let op = maybe_eval(env, &args[0], eval_args)?.as_op("iterate")?;
-      let mut value = maybe_eval(env, &args[1], eval_args)?;
-      let count = maybe_eval(env, &args[2], eval_args)?
+      let mut args_iter = args.into_iter();
+      let op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
+        .as_op("iterate")?;
+      let mut value = maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
+      let count = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("iterate")?
         .floor();
       for _ in 0..count as usize {
-        value = op.apply(env, &StrictList::unit(value), false)?;
+        value = op.apply(env, StrictList::unit(value), false)?;
       }
       Ok(value)
     }
@@ -1910,13 +1950,13 @@ pub fn quoot_iterate(
 
 pub fn quoot_time(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => {
       let timer = Instant::now();
-      let value = maybe_eval(env, &args[0], eval_args)?;
+      let value = maybe_eval(env, args.pop_front().unwrap(), eval_args)?;
       println!("{:.2?}", timer.elapsed());
       Ok(value)
     }
@@ -1929,12 +1969,12 @@ pub fn quoot_time(
 
 pub fn quoot_print(
   env: &Env,
-  args: &StrictList,
+  mut args: StrictList,
   eval_args: bool,
 ) -> Result<Value, EvalError> {
   match args.len() {
     1 => {
-      let value = maybe_eval(env, &args[0], eval_args)?;
+      let value = maybe_eval(env, args.pop_front().unwrap(), eval_args)?;
       println!("{}", value);
       Ok(value)
     }
@@ -1959,7 +1999,7 @@ pub fn default_bindings() -> Bindings {
   });
   let operator_bindings: &[(
     &str,
-    fn(&Env, &StrictList, bool) -> Result<Value, EvalError>,
+    fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
   )] = &[
     ("time", quoot_time),
     ("print", quoot_print),
