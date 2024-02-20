@@ -171,10 +171,7 @@ In addition to these goals, Quoot also aims to be a fairly performant general-pu
 
 ## To Do:
 ### high priority
-* replace `List::as_strict` with `List::to_strict`, which consumes the list
-  * same with `Value::as_list` and `Value::as_op`
-    * this might be a big performance difference actually
-* many calls to `pop_front()` can probably be replaced with a consuming `into_iter()` on the `Vector`
+* `Value::to_op`
 * make `List::get` return a reference, might be some places where cloning isn't necessary
 * figure out why kd tree is so slow
   * very surprised that it's so much slower than clj/cljs

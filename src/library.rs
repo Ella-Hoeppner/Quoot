@@ -156,7 +156,7 @@ pub fn parse_args_names(
   names: List,
   error_prefix: &str,
 ) -> Result<Vec<String>, EvalError> {
-  List::deliteralize(names.as_strict()?)
+  List::deliteralize(names.to_strict()?)
     .into_iter()
     .map(|value| match value {
       Value::Symbol(name) => Ok(name),
@@ -596,7 +596,7 @@ pub fn quoot_concat(
         List::Strict(strict_list) => concat_list.append(strict_list),
         List::Lazy(lazy_list) => {
           if lazy_list.is_fully_realized() {
-            concat_list.append(lazy_list.as_strict()?)
+            concat_list.append(lazy_list.to_strict()?)
           } else {
             concat_list
               .append(lazy_list.state.read().unwrap().realized_values.clone());
@@ -681,7 +681,7 @@ pub fn quoot_get(
           None => Err(EvalError::OutOfBoundsError(
             "get".to_string(),
             index,
-            list.as_strict()?.len() as i64,
+            list.to_strict()?.len() as i64,
           )),
         }
       }
@@ -912,7 +912,7 @@ pub fn quoot_strict(
     1 => Ok(Value::from(
       maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_list("strict")?
-        .as_strict()?,
+        .to_strict()?,
     )),
     n => Err(EvalError::OpError(format!(
       "strict: need 1 argument, got {}",
@@ -982,7 +982,7 @@ pub fn quoot_apply(
           env,
           maybe_eval(env, args_iter.next().unwrap(), eval_args)?
             .as_list("apply")?
-            .as_strict()?,
+            .to_strict()?,
           eval_args,
         ),
         other => Err(EvalError::OpError(format!(
@@ -1431,7 +1431,7 @@ pub fn quoot_reverse(
     1 => {
       let mut list = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
         .as_list("reverse")?
-        .as_strict()?;
+        .to_strict()?;
       let mut new_list = StrictList::new();
       while let Some(value) = list.pop_front() {
         new_list.push_front(value);

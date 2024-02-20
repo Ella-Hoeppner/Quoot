@@ -63,7 +63,7 @@ impl Op {
             None => Err(EvalError::OutOfBoundsError(
               "<List application>".to_string(),
               index,
-              list.as_strict()?.len() as i64,
+              list.clone().to_strict()?.len() as i64,
             )),
           }
         } else {
@@ -124,7 +124,7 @@ impl Op {
             env,
             maybe_eval(env, args.pop_front().unwrap(), eval_args)?
               .as_list("apply")?
-              .as_strict()?,
+              .to_strict()?,
             eval_args,
           )
         } else {
@@ -192,6 +192,12 @@ pub enum Num {
 }
 
 impl List {
+  pub fn to_strict(self) -> Result<StrictList, EvalError> {
+    match self {
+      List::Strict(list) => Ok(list),
+      List::Lazy(list) => list.to_strict(),
+    }
+  }
   pub fn as_strict(&self) -> Result<StrictList, EvalError> {
     match self {
       List::Strict(list) => Ok(list.clone()),
@@ -653,6 +659,12 @@ impl LazyList {
       )))
     }
   }
+  pub fn to_strict(self) -> Result<StrictList, EvalError> {
+    self.fully_realize()?;
+    Ok(std::mem::take(
+      &mut self.state.write().unwrap().realized_values,
+    ))
+  }
   pub fn as_strict(&self) -> Result<StrictList, EvalError> {
     self.fully_realize()?;
     Ok(self.state.read().unwrap().realized_values.clone())
@@ -663,7 +675,7 @@ pub fn eval(env: &Env, value: Value) -> Result<Value, EvalError> {
   match value {
     Value::Symbol(name) => env.get(&name),
     Value::List(list) => {
-      let mut values = list.as_strict()?;
+      let mut values = list.to_strict()?;
       match values.pop_front() {
         None => Ok(Value::List(List::Strict(StrictList::new()))),
         Some(first_value) => {
