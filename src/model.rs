@@ -123,7 +123,7 @@ impl Op {
           op.apply(
             env,
             maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-              .as_list("apply")?
+              .to_list("apply")?
               .to_strict()?,
             eval_args,
           )
@@ -367,33 +367,26 @@ impl Value {
       }
     }
   }
-  pub fn as_list(&self, error_prefix: &str) -> Result<List, EvalError> {
+  pub fn to_list(self, error_prefix: &str) -> Result<List, EvalError> {
     match self {
       Value::Nil => Ok(List::Strict(StrictList::new())),
-      Value::List(list) => Ok(list.clone()),
-      _ => {
-        return Err(EvalError::OpError(format!(
-          "{}: can't get list from type {}",
-          error_prefix,
-          self.type_string()
-        )))
-      }
+      Value::List(list) => Ok(list),
+      _ => Err(EvalError::OpError(format!(
+        "{}: can't get list from type {}",
+        error_prefix,
+        self.type_string()
+      ))),
     }
   }
-  pub fn as_op(&self, error_prefix: &str) -> Result<Op, EvalError> {
+  pub fn to_op(self, error_prefix: &str) -> Result<Op, EvalError> {
     match self {
       Value::Op(op) => Ok(op.clone()),
-      Value::List(list) => {
-        let cloned_list = list.clone();
-        Ok(Op::ListAccess(cloned_list))
-      }
-      _ => {
-        return Err(EvalError::OpError(format!(
-          "{}: can't use type {} as a function",
-          error_prefix,
-          self.type_string()
-        )))
-      }
+      Value::List(list) => Ok(Op::ListAccess(list)),
+      _ => Err(EvalError::OpError(format!(
+        "{}: can't use type {} as a function",
+        error_prefix,
+        self.type_string()
+      ))),
     }
   }
   pub fn as_bool(&self) -> bool {
@@ -679,7 +672,7 @@ pub fn eval(env: &Env, value: Value) -> Result<Value, EvalError> {
       match values.pop_front() {
         None => Ok(Value::List(List::Strict(StrictList::new()))),
         Some(first_value) => {
-          let op = eval(env, first_value)?.as_op("eval")?;
+          let op = eval(env, first_value)?.to_op("eval")?;
           op.apply(env, values, true)
         }
       }

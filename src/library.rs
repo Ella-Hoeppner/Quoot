@@ -184,7 +184,7 @@ pub fn quoot_op(
     match first_arg {
       Value::Symbol(name) => (
         Some(name),
-        parse_args_names(args.pop_front().unwrap().as_list("fn")?, "fn")?,
+        parse_args_names(args.pop_front().unwrap().to_list("fn")?, "fn")?,
       ),
       Value::List(list) => (None, parse_args_names(list, "fn")?),
       other => {
@@ -220,7 +220,7 @@ pub fn quoot_fn(
     match first_arg {
       Value::Symbol(name) => (
         Some(name),
-        parse_args_names(args.pop_front().unwrap().as_list("fn")?, "fn")?,
+        parse_args_names(args.pop_front().unwrap().to_list("fn")?, "fn")?,
       ),
       Value::List(list) => (None, parse_args_names(list, "fn")?),
       other => {
@@ -545,7 +545,7 @@ pub fn quoot_cons(
               .get(0)
               .unwrap()
               .unwrap()
-              .as_list("cons")?;
+              .to_list("cons")?;
             match original_list
               .get(lazy_state.realized_values.len() as i64 - 1)?
             {
@@ -592,7 +592,7 @@ pub fn quoot_concat(
     let mut values = maybe_eval_all(env, args, eval_args)?;
     let mut concat_list = StrictList::new();
     while let Some(list_value) = values.pop_front() {
-      match list_value.as_list("concat")? {
+      match list_value.to_list("concat")? {
         List::Strict(strict_list) => concat_list.append(strict_list),
         List::Lazy(lazy_list) => {
           if lazy_list.is_fully_realized() {
@@ -622,7 +622,8 @@ pub fn quoot_concat(
                   let original_list = builder_values_strict
                     .get(outer_index as usize + 2)
                     .unwrap()
-                    .as_list("concat")?;
+                    .clone()
+                    .to_list("concat")?;
                   match original_list.get(inner_index)? {
                     Some(value) => {
                       lazy_state.realized_values.push_back(value);
@@ -706,12 +707,12 @@ pub fn quoot_update(
   if args.len() == 3 {
     let mut args_iter = args.into_iter();
     let list = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-      .as_list("update")?;
+      .to_list("update")?;
     let index = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
       .as_num("update")?
       .floor() as usize;
     let op =
-      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_op("update")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.to_op("update")?;
     match list {
       List::Strict(strict_list) => {
         if index >= strict_list.len() {
@@ -784,7 +785,7 @@ pub fn quoot_take(
     ) as usize;
     Ok(Value::List(
       match maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-        .as_list("take")?
+        .to_list("take")?
       {
         List::Strict(strict_list) => List::Strict(if n >= strict_list.len() {
           strict_list
@@ -804,7 +805,7 @@ pub fn quoot_take(
               lazy_state.is_finished = true;
             } else {
               let original_list =
-                builder_values.get(1).unwrap().unwrap().as_list("take")?;
+                builder_values.get(1).unwrap().unwrap().to_list("take")?;
               match original_list.get(lazy_state.realized_values.len() as i64)?
               {
                 Some(value) => {
@@ -853,7 +854,7 @@ pub fn quoot_drop(
     ) as usize;
     Ok(Value::List(
       match maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-        .as_list("drop")?
+        .to_list("drop")?
       {
         List::Strict(strict_list) => {
           List::Strict(strict_list.skip(0.max(n) as usize))
@@ -868,7 +869,7 @@ pub fn quoot_drop(
               .as_num("take")?
               .floor();
             let original_list =
-              builder_values.get(1).unwrap().unwrap().as_list("take")?;
+              builder_values.get(1).unwrap().unwrap().to_list("take")?;
             match original_list
               .get(n + lazy_state.realized_values.len() as i64)?
             {
@@ -911,7 +912,7 @@ pub fn quoot_strict(
   match args.len() {
     1 => Ok(Value::from(
       maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_list("strict")?
+        .to_list("strict")?
         .to_strict()?,
     )),
     n => Err(EvalError::OpError(format!(
@@ -973,7 +974,7 @@ pub fn quoot_apply(
       "apply: need 1 or 2 arguments, got 0".to_string(),
     )),
     1 => Ok(Value::Op(Op::Applied(Rc::from(
-      maybe_eval(env, args.pop_front().unwrap(), eval_args)?.as_op("apply")?,
+      maybe_eval(env, args.pop_front().unwrap(), eval_args)?.to_op("apply")?,
     )))),
     2 => {
       let mut args_iter = args.into_iter();
@@ -981,7 +982,7 @@ pub fn quoot_apply(
         Value::Op(op) => op.apply(
           env,
           maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-            .as_list("apply")?
+            .to_list("apply")?
             .to_strict()?,
           eval_args,
         ),
@@ -1024,13 +1025,13 @@ pub fn quoot_compose(
     ))),
     1 => Ok(Value::Op(
       maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_op("compose")?,
+        .to_op("compose")?,
     )),
     _ => {
       let ops = args
         .into_iter()
         .rev()
-        .map(|arg| maybe_eval(env, arg, eval_args)?.as_op("compose"))
+        .map(|arg| maybe_eval(env, arg, eval_args)?.to_op("compose"))
         .collect::<Vec<Result<Op, EvalError>>>()
         .into_iter()
         .collect::<Result<Vec<Op>, EvalError>>()?;
@@ -1050,11 +1051,11 @@ pub fn quoot_partial(
     )),
     1 => Ok(Value::Op(
       maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_op("partial")?,
+        .to_op("partial")?,
     )),
     _ => {
       let mut values = maybe_eval_all(env, args, eval_args)?;
-      let f = values.pop_front().unwrap().as_op("partial")?;
+      let f = values.pop_front().unwrap().to_op("partial")?;
       Ok(Value::Op(Op::Partial(Rc::from(f), values)))
     }
   }
@@ -1412,7 +1413,7 @@ pub fn quoot_rest(
   match args.len() {
     1 => Ok(Value::List(
       maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_list("rest")?
+        .to_list("rest")?
         .rest()?,
     )),
     n => Err(EvalError::OpError(format!(
@@ -1430,7 +1431,7 @@ pub fn quoot_reverse(
   match args.len() {
     1 => {
       let mut list = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_list("reverse")?
+        .to_list("reverse")?
         .to_strict()?;
       let mut new_list = StrictList::new();
       while let Some(value) = list.pop_front() {
@@ -1591,9 +1592,9 @@ pub fn quoot_filter(
   if args.len() == 2 {
     let mut args_iter = args.into_iter();
     let predicate =
-      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.as_op("filter")?;
+      maybe_eval(env, args_iter.next().unwrap(), eval_args)?.to_op("filter")?;
     let list = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-      .as_list("filter")?;
+      .to_list("filter")?;
     let mut initial_builder_values = StrictList::new();
     initial_builder_values.push_back(Value::from(0i64));
     initial_builder_values.push_back(Value::List(list));
@@ -1604,8 +1605,10 @@ pub fn quoot_filter(
           state.builder_values.as_ref().unwrap().as_strict()?;
         let mut index =
           builder_values.front().unwrap().as_num("filter")?.floor();
-        let original_list = builder_values.get(1).unwrap().as_list("filter")?;
-        let predicate = builder_values.get(2).unwrap().as_op("filter")?;
+        let original_list =
+          builder_values.get(1).unwrap().clone().to_list("filter")?;
+        let predicate =
+          builder_values.get(2).unwrap().clone().to_op("filter")?;
         while let Some(value) = original_list.get(index)? {
           if predicate
             .apply(
@@ -1653,7 +1656,7 @@ pub fn quoot_map(
       vec![maybe_eval(env, args_iter.next().unwrap(), eval_args)?];
     while let Some(arg) = args_iter.next() {
       map_values.push(Value::List(
-        maybe_eval(env, arg, eval_args)?.as_list("map")?,
+        maybe_eval(env, arg, eval_args)?.to_list("map")?,
       ));
     }
     Ok(Value::from(LazyList::new(
@@ -1661,10 +1664,16 @@ pub fn quoot_map(
         let index = state.realized_values.len() as i64;
         let builder_values =
           state.builder_values.as_ref().unwrap().as_strict()?;
-        let op = builder_values.get(0).unwrap().as_op("map")?;
+        let op = builder_values.get(0).unwrap().clone().to_op("map")?;
         let mut op_args: Vec<Value> = vec![];
         for i in 1..builder_values.len() {
-          match builder_values.get(i).unwrap().as_list("map")?.get(index)? {
+          match builder_values
+            .get(i)
+            .unwrap()
+            .clone()
+            .to_list("map")?
+            .get(index)?
+          {
             Some(value) => {
               op_args.push(value);
             }
@@ -1853,12 +1862,13 @@ pub fn quoot_repeatedly(
   match args.len() {
     1 => {
       let generator_op = maybe_eval(env, args.pop_front().unwrap(), eval_args)?
-        .as_op("repeatedly")?;
+        .to_op("repeatedly")?;
       Ok(Value::from(LazyList::new(
         &|lazy_state| {
           let generator_op =
             lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
-              .as_op("repeatedly")?;
+              .clone()
+              .to_op("repeatedly")?;
           let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
             StrictList::new(),
@@ -1877,7 +1887,7 @@ pub fn quoot_repeatedly(
     2 => {
       let mut args_iter = args.into_iter();
       let generator_op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-        .as_op("repeatedly")?;
+        .to_op("repeatedly")?;
       let count = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("repeatedly")?
         .floor();
@@ -1903,14 +1913,15 @@ pub fn quoot_iterate(
     2 => {
       let mut args_iter = args.into_iter();
       let op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-        .as_op("iterate")?;
+        .to_op("iterate")?;
       let initial_value =
         maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
       Ok(Value::from(LazyList::new(
         &|lazy_state| {
           let generator_op =
             lazy_state.builder_values.as_ref().unwrap().as_strict()?[0]
-              .as_op("iterate")?;
+              .clone()
+              .to_op("iterate")?;
           let value = generator_op.apply(
             &lazy_state.captured_environment.as_ref().unwrap(),
             StrictList::unit(
@@ -1931,7 +1942,7 @@ pub fn quoot_iterate(
     3 => {
       let mut args_iter = args.into_iter();
       let op = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
-        .as_op("iterate")?;
+        .to_op("iterate")?;
       let mut value = maybe_eval(env, args_iter.next().unwrap(), eval_args)?;
       let count = maybe_eval(env, args_iter.next().unwrap(), eval_args)?
         .as_num("iterate")?
