@@ -7,7 +7,9 @@ use interpreter::{evaluate_program, repl};
 
 fn main() {
   let _ = repl();
-  let _ = evaluate_program(vec![
+  /*let _ =
+  evaluate_program(vec!["(time (apply + (range 10000000)))".to_string()]);*/
+  /*let _ = evaluate_program(vec![
   "(def magnitude (fn [v] (sqrt (apply + (map (fn [x] (* x x)) v)))))".to_string(),
   "(def distance (. magnitude (| map -)))".to_string(),
   "(def kd-insert \
@@ -61,5 +63,5 @@ fn main() {
                             100))] \
     (time (count (map (fn [p] (kd-nearest tree p 0)) \
                       (repeatedly (fn [] [(rand) (rand) (rand)]) \
-                                  100)))))".to_string()]);
+                                  100)))))".to_string()]);*/
 }

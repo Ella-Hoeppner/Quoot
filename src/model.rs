@@ -39,7 +39,7 @@ pub enum Op {
   Core(CoreOp),
   User(UserOp),
   Composition(Vec<Op>),
-  Partial(Rc<Op>, Vector<Value>),
+  Partial(Rc<Op>, StrictList),
   Applied(Rc<Op>),
   ListAccess(List),
 }
@@ -168,11 +168,11 @@ impl UserOp {
 
 #[derive(Clone)]
 pub struct CoreOp {
-  pub f: &'static dyn Fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
+  pub f: &'static fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
 }
 impl CoreOp {
   pub fn new(
-    f: &'static dyn Fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
+    f: &'static fn(&Env, StrictList, bool) -> Result<Value, EvalError>,
   ) -> Self {
     Self { f }
   }

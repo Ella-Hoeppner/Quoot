@@ -15,7 +15,6 @@ fn fold_nums<F: FnMut(Num, &Num) -> Num>(
     values
       .iter()
       .map(|v| v.as_num(error_message_name))
-      .into_iter()
       .collect::<Result<Vec<Num>, EvalError>>()?
       .iter()
       .fold(init_value, folder),
@@ -984,7 +983,7 @@ pub fn quoot_apply(
           maybe_eval(env, args_iter.next().unwrap(), eval_args)?
             .to_list("apply")?
             .to_strict()?,
-          eval_args,
+          false,
         ),
         other => Err(EvalError::OpError(format!(
           "apply: cannot invoke type <{}>",

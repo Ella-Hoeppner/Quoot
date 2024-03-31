@@ -1,3 +1,6 @@
+## Abandoned
+I'm no longer working on this, and I don't plan to resume. Instead, I'm working on a new implementation of most of the same ideas in [Pidgin](https://github.com/Ella-Hoeppner/Pidgin). For performance reasons, Pidgin compiles to a register-based VM (or at least, that's the plan), which involves dropping the vau-calculus-esque evaluation model and the runtime-metaprogramming "operator" constructs that Quoot supported, instead relying on ahead-of-time compiled metaprogramming constructs, like most modern Lisps. However, Pidgin will still support the other syntax/metaprogramming features that I had planned for Quoot, while hopefully being much, much more performant.
+
 # Quoot (working title)
 Early WIP interpreted lisp with a focus on flexible metaprogramming, embedded DSLs, and code generation for other programming languages.
 

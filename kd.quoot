@@ -51,9 +51,9 @@
 
 (let [tree (time (nth (iterate #(kd-insert % [(rand) (rand) (rand)])
                                nil)
-                      10000))]
+                      1000))]
   (time (count (mapv #(kd-nearest tree %)
-                     (repeatedly 10000
+                     (repeatedly 1000
                                  (fn [] [(rand) (rand) (rand)]))))))
 
 
